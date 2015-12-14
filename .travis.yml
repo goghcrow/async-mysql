@@ -18,8 +18,12 @@ before_install:
   - 'composer selfupdate --no-interaction'
 
 install:
-  - 'travis_retry composer update --no-interaction --prefer-source $DEPS'
-  - 'composer info -i'
+  - >
+    mysql -e "CREATE DATABASE atest;" -uroot;
+    export DB_DSN="mysql:host=localhost;dbname=atest";
+    export DB_USERNAME=root;
+  - travis_retry composer update --no-interaction --prefer-source $DEPS
+  - composer info -i
 
 script:
   - './vendor/bin/phpunit -c "./test/phpunit.xml"'
