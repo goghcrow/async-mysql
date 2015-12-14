@@ -1,0 +1,8 @@
+.git/
+.externalToolBuilders/
+.settings/
+.project
+.buildpath
+composer.lock
+/vendor/
+/.vagrant/

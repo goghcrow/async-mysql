@@ -1,2 +1,3 @@
-# async-mysql
-KoolKode Async MySQL Client
+# KoolKode Async MySQL Client
+
+Experimental MySQL client, work in progress...
