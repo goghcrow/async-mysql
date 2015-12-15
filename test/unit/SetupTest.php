@@ -66,7 +66,7 @@ class SetupTest extends \PHPUnit_Framework_TestCase
             $conn = yield from Connection::connect('localhost', $this->getEnvParam('DB_USERNAME', ''), $this->getEnvParam('DB_PASSWORD', ''));
             
             try {
-                print_r($conn);
+                $this->assertTrue(yield from $conn->ping());
             } finally {
                 yield from $conn->close();
             }

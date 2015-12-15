@@ -119,90 +119,109 @@ class Connection
         try {
             yield from $this->sendPacket($this->encodeInt8(0x01));
         } finally {
+            $this->sequence = -1;
+            
             $this->stream->close();
+        }
+    }
+    
+    public function ping(): \Generator
+    {
+        try {
+            yield from $this->sendPacket($this->encodeInt8(0x0E));
+            
+            $response = yield from $this->readNextPacket();
+            
+            return ord($response) === 0x00;
+        } finally {
+            $this->sequence = -1;
         }
     }
     
     protected function handleHandshake(string $username, string $password): \Generator
     {
-        $packet = yield from $this->readNextPacket();
-        $off = 0;
-        
-        if ($this->readInt8($packet, $off) !== 0x0A) {
-            throw new \RuntimeException(sprintf('Unsupported protocol version: %02X', ord($packet)));
-        }
-        
-        $this->info['server'] = $this->readNullString($packet, $off);
-        $this->id = $this->readInt32($packet, $off);
-        
-        $this->authPluginData = substr($packet, $off, 8);
-        $off += 8;
-        
-        $off++;
-        
-        $this->serverCapabilities = $this->readInt16($packet, $off);
-        
-        if (strlen($packet) > $off) {
-            $this->info['charset'] = $this->readInt8($packet, $off);
-            $this->info['statusFlags'] = $this->readInt16($packet, $off);
+        try {
+            $packet = yield from $this->readNextPacket();
+            $off = 0;
             
-            $this->serverCapabilities += ($this->readInt16($packet, $off) << 16);
+            if ($this->readInt8($packet, $off) !== 0x0A) {
+                throw new \RuntimeException(sprintf('Unsupported protocol version: %02X', ord($packet)));
+            }
             
-            $alen = ($this->serverCapabilities & self::CLIENT_PLUGIN_AUTH) ? $this->readInt8($packet, $off) : 0;
+            $this->info['server'] = $this->readNullString($packet, $off);
+            $this->id = $this->readInt32($packet, $off);
             
-            if ($this->serverCapabilities & self::CLIENT_SECURE_CONNECTION) {
-                $off += 10;
+            $this->authPluginData = substr($packet, $off, 8);
+            $off += 8;
+            
+            $off++;
+            
+            $this->serverCapabilities = $this->readInt16($packet, $off);
+            
+            if (strlen($packet) > $off) {
+                $this->info['charset'] = $this->readInt8($packet, $off);
+                $this->info['statusFlags'] = $this->readInt16($packet, $off);
                 
-                $this->authPluginData .= $this->readFixedLengthString($packet, max(13, $alen - 8), $off);
+                $this->serverCapabilities += ($this->readInt16($packet, $off) << 16);
                 
-                if ($this->serverCapabilities & self::CLIENT_PLUGIN_AUTH) {
-                    $this->authPluginName = trim($this->readNullString($packet, $off));
+                $alen = ($this->serverCapabilities & self::CLIENT_PLUGIN_AUTH) ? $this->readInt8($packet, $off) : 0;
+                
+                if ($this->serverCapabilities & self::CLIENT_SECURE_CONNECTION) {
+                    $off += 10;
+                    
+                    $this->authPluginData .= $this->readFixedLengthString($packet, max(13, $alen - 8), $off);
+                    
+                    if ($this->serverCapabilities & self::CLIENT_PLUGIN_AUTH) {
+                        $this->authPluginName = trim($this->readNullString($packet, $off));
+                    }
                 }
             }
-        }
-        
-        // Prepare and send handshake response packet:
-        $this->capabilities &= $this->serverCapabilities;
-        
-        $packet = $this->encodeInt32($this->capabilities);
-        $packet .= $this->encodeInt32(self::MAX_PACKET_SIZE);
-        $packet .= $this->encodeInt8($this->charset);
-        $packet .= str_repeat("\0", 23);
-        
-        $packet .= $username . "\0";
-        
-        if ($password === '') {
-            $auth = '';
-        } elseif ($this->capabilities & self::CLIENT_PLUGIN_AUTH) {
-            switch ($this->authPluginName) {
-                case 'mysql_native_password':
-                    $auth = $this->secureAuth($password, $this->authPluginData);
-                    break;
-                default:
-                    throw new \RuntimeException(sprintf('Unsupported auth scheme: "%s"', $this->authPluginName));
+            
+            // Prepare and send handshake response packet:
+            $this->capabilities &= $this->serverCapabilities;
+            
+            $packet = $this->encodeInt32($this->capabilities);
+            $packet .= $this->encodeInt32(self::MAX_PACKET_SIZE);
+            $packet .= $this->encodeInt8($this->charset);
+            $packet .= str_repeat("\0", 23);
+            
+            $packet .= $username . "\0";
+            
+            if ($password === '') {
+                $auth = '';
+            } elseif ($this->capabilities & self::CLIENT_PLUGIN_AUTH) {
+                switch ($this->authPluginName) {
+                    case 'mysql_native_password':
+                        $auth = $this->secureAuth($password, $this->authPluginData);
+                        break;
+                    default:
+                        throw new \RuntimeException(sprintf('Unsupported auth scheme: "%s"', $this->authPluginName));
+                }
+            } else {
+                $auth = $this->secureAuth($password, $this->authPluginData);
             }
-        } else {
-            $auth = $this->secureAuth($password, $this->authPluginData);
-        }
-        
-        if ($this->capabilities & self::CLIENT_PLUGIN_AUTH_LENENC_CLIENT_DATA) {
-            $packet .= $this->encodeInt(strlen($auth)) . $auth;
-        } elseif ($this->capabilities & self::CLIENT_SECURE_CONNECTION) {
-            $packet .= $this->encodeInt8(strlen($auth)) . $auth;
-        } else {
-            $packet .= $auth . "\0";
-        }
-        
-        if ($this->capabilities & self::CLIENT_PLUGIN_AUTH) {
-            $packet .= $this->authPluginName . "\0";
-        }
-        
-        yield from $this->sendPacket($packet);
-        
-        $packet = yield from $this->readNextPacket();
-        
-        if (ord($packet) !== 0) {
-            var_dump($packet);
+            
+            if ($this->capabilities & self::CLIENT_PLUGIN_AUTH_LENENC_CLIENT_DATA) {
+                $packet .= $this->encodeInt(strlen($auth)) . $auth;
+            } elseif ($this->capabilities & self::CLIENT_SECURE_CONNECTION) {
+                $packet .= $this->encodeInt8(strlen($auth)) . $auth;
+            } else {
+                $packet .= $auth . "\0";
+            }
+            
+            if ($this->capabilities & self::CLIENT_PLUGIN_AUTH) {
+                $packet .= $this->authPluginName . "\0";
+            }
+            
+            yield from $this->sendPacket($packet);
+            
+            $packet = yield from $this->readNextPacket();
+            
+            if (ord($packet) !== 0) {
+                var_dump($packet);
+            }
+        } finally {
+            $this->sequence = -1;
         }
     }
     
