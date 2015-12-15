@@ -203,6 +203,10 @@ class Connection
         
         yield from $conn->handleHandshake($username, $password);
         
+        if (!empty($settings['dbname'])) {
+            yield from $conn->changeDefaultSchema($settings['dbname']);
+        }
+        
         return $conn;
     }
     
@@ -214,6 +218,16 @@ class Connection
             $this->sequence = -1;
             
             $this->stream->close();
+        }
+    }
+    
+    protected function changeDefaultSchema(string $schema): \Generator
+    {
+        try {
+            yield from $this->sendPacket($this->encodeInt8(0x02) . $schema);
+            yield from $this->readNextPacket();
+        } finally {
+            $this->sequence = -1;
         }
     }
     
