@@ -162,28 +162,30 @@ class Connection
         
         $packet .= $username . "\0";
         
-        if ($this->capabilities & self::CLIENT_PLUGIN_AUTH) {
-            switch ($this->authPluginName) {
-                case 'mysql_native_password':
-                    $auth = $this->secureAuth($password, $this->authPluginData);
-                    break;
-                default:
-                    throw new \RuntimeException(sprintf('Unsupported auth scheme: "%s"', $this->authPluginName));
+        if (trim($password) !== '') {
+            if ($this->capabilities & self::CLIENT_PLUGIN_AUTH) {
+                switch ($this->authPluginName) {
+                    case 'mysql_native_password':
+                        $auth = $this->secureAuth($password, $this->authPluginData);
+                        break;
+                    default:
+                        throw new \RuntimeException(sprintf('Unsupported auth scheme: "%s"', $this->authPluginName));
+                }
+            } else {
+                $auth = $this->secureAuth($password, $this->authPluginData);
             }
-        } else {
-            $auth = $this->secureAuth($password, $this->authPluginData);
-        }
-        
-        if ($this->capabilities & self::CLIENT_PLUGIN_AUTH_LENENC_CLIENT_DATA) {
-            $packet .= $this->encodeInt(strlen($auth)) . $auth;
-        } elseif ($this->capabilities & self::CLIENT_SECURE_CONNECTION) {
-            $packet .= $this->encodeInt8(strlen($auth)) . $auth;
-        } else {
-            $packet .= $auth . "\0";
-        }
-        
-        if ($this->capabilities & self::CLIENT_PLUGIN_AUTH) {
-            $packet .= $this->authPluginName . "\0";
+            
+            if ($this->capabilities & self::CLIENT_PLUGIN_AUTH_LENENC_CLIENT_DATA) {
+                $packet .= $this->encodeInt(strlen($auth)) . $auth;
+            } elseif ($this->capabilities & self::CLIENT_SECURE_CONNECTION) {
+                $packet .= $this->encodeInt8(strlen($auth)) . $auth;
+            } else {
+                $packet .= $auth . "\0";
+            }
+            
+            if ($this->capabilities & self::CLIENT_PLUGIN_AUTH) {
+                $packet .= $this->authPluginName . "\0";
+            }
         }
         
         yield from $this->sendPacket($packet);
