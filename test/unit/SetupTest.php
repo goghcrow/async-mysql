@@ -24,7 +24,7 @@ class SetupTest extends \PHPUnit_Framework_TestCase
      *
      * @throws \OutOfBoundsException When env param is not set and no default value was given.
      */
-    protected static function getEnvParam(string $name)
+    protected function getEnvParam(string $name)
     {
         if (array_key_exists($name, $GLOBALS)) {
             return $GLOBALS[$name];
@@ -45,9 +45,8 @@ class SetupTest extends \PHPUnit_Framework_TestCase
         throw new \OutOfBoundsException(sprintf('ENV param not found: "%s"', $name));
     }
 
-    public function test()
+    public function testConnection()
     {
-        // PORT: 3306
         $pdo = new \PDO($this->getEnvParam('DB_DSN'), $this->getEnvParam('DB_USERNAME', NULL), $this->getEnvParam('DB_PASSWORD', NULL));
         $pdo->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
         
@@ -64,7 +63,7 @@ class SetupTest extends \PHPUnit_Framework_TestCase
         $executor = (new ExecutorFactory())->createExecutor();
         
         $executor->runNewTask(call_user_func(function () {
-            $conn = yield from Connection::connect('localhost');
+            $conn = yield from Connection::connect('localhost', $this->getEnvParam('DB_USERNAME', ''), $this->getEnvParam('DB_PASSWORD', ''));
             
             print_r($conn);
         }));
