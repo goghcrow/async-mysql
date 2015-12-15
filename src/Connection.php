@@ -109,7 +109,35 @@ class Connection
     const CLIENT_PLUGIN_AUTH_LENENC_CLIENT_DATA = 0x00200000;
 
     const CLIENT_DEPRECATE_EOF = 0x01000000;
-    
+
+    const SERVER_STATUS_IN_TRANS = 0x0001;
+
+    const SERVER_STATUS_AUTOCOMMIT = 0x0002;
+
+    const SERVER_MORE_RESULTS_EXISTS = 0x0008;
+
+    const SERVER_STATUS_NO_GOOD_INDEX_USED = 0x0010;
+
+    const SERVER_STATUS_NO_INDEX_USED = 0x0020;
+
+    const SERVER_STATUS_CURSOR_EXISTS = 0x0040;
+
+    const SERVER_STATUS_LAST_ROW_SENT = 0x0080;
+
+    const SERVER_STATUS_DB_DROPPED = 0x0100;
+
+    const SERVER_STATUS_NO_BACKSLASH_ESCAPES = 0x0200;
+
+    const SERVER_STATUS_METADATA_CHANGED = 0x0400;
+
+    const SERVER_QUERY_WAS_SLOW = 0x0800;
+
+    const SERVER_PS_OUT_PARAMS = 0x1000;
+
+    const SERVER_STATUS_IN_TRANS_READONLY = 0x2000;
+
+    const SERVER_SESSION_STATE_CHANGED = 0x4000;
+
     const MAX_PACKET_SIZE = 1 << 24 - 1;
 
     /**
@@ -181,6 +209,9 @@ class Connection
                 case 'dbname':
                     $settings[$k] = $v;
                     break;
+                case 'port':
+                    $settings[$k] = (int)$v;
+                    break;
                 default:
                     throw new \InvalidArgumentException(sprintf('Unknown MySQL DSN param: "%s"', $k));
             }
@@ -191,13 +222,7 @@ class Connection
         }
         
         $host = $settings['host'];
-        $m = NULL;
-        
-        if (preg_match("':([1-9][0-9]*)$'", $host, $m)) {
-            $port = (int) $m[1];
-        } else {
-            $port = self::DEFAULT_PORT;
-        }
+        $port = $settings['port'] ?? self::DEFAULT_PORT;
         
         $conn = new static(yield from SocketStream::connect($host, $port));
         
@@ -301,11 +326,35 @@ class Connection
                     if (0xFB === ord($packet[$off])) {
                         $row[$columns[$i]['name']] = NULL;
                     } else {
-                        $row[$columns[$i]['name']] = $this->readBinary($columns[$i]['type'], $packet, $off);
+                        $row[$columns[$i]['name']] = $this->readTextCol($columns[$i]['type'], $packet, $off);
                     }
                 }
                 
                 $rows[] = $row;
+            }
+            
+            $off = 1;
+            
+            $affected = $this->readLengthEncodedInt($packet, $off);
+            $lastInsetId = $this->readLengthEncodedInt($packet, $off);
+//             $statusFlags = 0;
+//             $numWarnings = 0;
+            
+//             if ($this->capabilities & self::CLIENT_PROTOCOL_41) {
+//                 $statusFlags = $this->readInt16($packet, $off);
+//                 $numWarnings = $this->readInt16($packet, $off);
+//             } elseif ($this->capabilities & self::CLIENT_TRANSACTIONS) {
+//                 $statusFlags = $this->readInt16($packet, $off);
+//             }
+            
+            if ($this->capabilities & self::CLIENT_SESSION_TRACK) {
+                $info = $this->readLengthEncodedString($packet, $off);
+                
+                if ($statusFlags & self::SERVER_SESSION_STATE_CHANGED) {
+                    $changes = $this->readLengthEncodedString($packet, $off);
+                }
+            } else {
+                $info = substr($packet, $off);
             }
             
             return $rows;
@@ -600,7 +649,7 @@ class Connection
         return $str;
     }
 
-    protected function readBinary(int $type, string $data, int & $off)
+    protected function readTextCol(int $type, string $data, int & $off)
     {
         $unsigned = $type & 0x80;
         $str = $this->readLengthEncodedString($data, $off);
