@@ -286,7 +286,7 @@ class Connection
                 $packet = yield from $this->readNextPacket();
                 $off = 0;
                 
-                assert('def' === $this->readLengthEncodedString($packet, $off));
+                $this->assert('def' === $this->readLengthEncodedString($packet, $off), 'Missing column def');
                 
                 $col = [
                     'schema' => $this->readLengthEncodedString($packet, $off),
@@ -296,7 +296,7 @@ class Connection
                     'org_name' => $this->readLengthEncodedString($packet, $off)
                 ];
                 
-                assert(0 < $this->readLengthEncodedInt($packet, $off));
+                $this->assert(0 < $this->readLengthEncodedInt($packet, $off), 'Missing fixed column values');
                 
                 $col['charset'] = $this->readInt16($packet, $off);
                 $col['length'] = $this->readInt32($packet, $off);
@@ -304,12 +304,12 @@ class Connection
                 $col['flags'] = $this->readInt16($packet, $off);
                 $col['decimals'] = $this->readInt8($packet, $off);
                 
-                assert("\0\0" === $this->readFixedLengthString($packet, 2, $off));
+                $this->assert("\0\0" === $this->readFixedLengthString($packet, 2, $off), 'Missing column definition filler');
                 
                 $columns[] = $col;
             }
             
-            assert(0xFE === ord(yield from $this->readNextPacket()));
+            $this->assert(0xFE === ord(yield from $this->readNextPacket()), 'Missing EOF packet after column definitions');
             
             $rows = [];
             
@@ -363,6 +363,13 @@ class Connection
         }
     }
     
+    protected function assert(bool $condition, string $message)
+    {
+        if (!$condition) {
+            throw new ProtocolError($message);
+        }
+    }
+    
     protected function handleHandshake(string $username, string $password): \Generator
     {
         try {
@@ -370,7 +377,7 @@ class Connection
             $off = 0;
             
             if ($this->readInt8($packet, $off) !== 0x0A) {
-                throw new \RuntimeException(sprintf('Unsupported protocol version: %02X', ord($packet)));
+                throw new ProtocolError(sprintf('Unsupported protocol version: %02X', ord($packet)));
             }
             
             $this->info['server'] = $this->readNullString($packet, $off);
@@ -420,7 +427,7 @@ class Connection
                         $auth = $this->secureAuth($password, $this->authPluginData);
                         break;
                     default:
-                        throw new \RuntimeException(sprintf('Unsupported auth scheme: "%s"', $this->authPluginName));
+                        throw new ProtocolError(sprintf('Unsupported auth scheme: "%s"', $this->authPluginName));
                 }
             } else {
                 $auth = $this->secureAuth($password, $this->authPluginData);
@@ -527,7 +534,7 @@ class Connection
             return $this->readInt64($data, $off);
         }
         
-        throw new \RangeException("$int is not in ranges [0x00, 0xfa] or [0xfc, 0xfe]");
+        throw new ProtocolError("$int is not in ranges [0x00, 0xfa] or [0xfc, 0xfe]");
     }
     
     protected function readInt8(string $data, int & $off = 0): int
@@ -705,7 +712,7 @@ class Connection
             return "\xFE" . self::encode_int64($val);
         }
         
-        throw new \OutOfRangeException("encodeInt doesn't allow integers bigger than 2^64 - 1 (current: $val)");
+        throw new ProtocolError("encodeInt doesn't allow integers bigger than 2^64 - 1 (current: $val)");
     }
     
     protected function encodeInt8(int $val): string
