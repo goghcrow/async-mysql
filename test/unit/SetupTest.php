@@ -60,6 +60,8 @@ class SetupTest extends \PHPUnit_Framework_TestCase
             $pdo->exec($cmd);
         }
         
+        $pdo->exec("INSERT INTO customer (name) VALUES ('KoolKode'), ('Async'), ('MySQL'), ('Git')");
+        
         $executor = (new ExecutorFactory())->createExecutor();
         
         $executor->runNewTask(call_user_func(function () {
@@ -68,11 +70,15 @@ class SetupTest extends \PHPUnit_Framework_TestCase
             try {
                 $this->assertTrue(yield from $conn->ping());
                 
-                echo "\n\nMYSQL SERVER VARS:\n------------------\n";
+                echo "\nMYSQL SERVER VARS:\n------------------\n";
                 
                 foreach (yield from $conn->query("SHOW VARIABLES") as $row) {
                     vprintf("%s = %s\n", array_values($row));
                 }
+                
+                echo "\n";
+                
+                print_r(yield from $conn->query("SELECT * FROM test.customer ORDER BY name DESC"));
             } finally {
                 yield from $conn->close();
             }

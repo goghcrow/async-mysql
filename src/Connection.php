@@ -18,6 +18,66 @@ use function KoolKode\Async\readBuffer;
 
 class Connection
 {
+    const MYSQL_TYPE_DECIMAL = 0x00;
+
+    const MYSQL_TYPE_TINY = 0x01;
+
+    const MYSQL_TYPE_SHORT = 0x02;
+
+    const MYSQL_TYPE_LONG = 0x03;
+
+    const MYSQL_TYPE_FLOAT = 0x04;
+
+    const MYSQL_TYPE_DOUBLE = 0x05;
+
+    const MYSQL_TYPE_NULL = 0x06;
+
+    const MYSQL_TYPE_TIMESTAMP = 0x07;
+
+    const MYSQL_TYPE_LONGLONG = 0x08;
+
+    const MYSQL_TYPE_INT24 = 0x09;
+
+    const MYSQL_TYPE_DATE = 0x0a;
+
+    const MYSQL_TYPE_TIME = 0x0b;
+
+    const MYSQL_TYPE_DATETIME = 0x0c;
+
+    const MYSQL_TYPE_YEAR = 0x0d;
+
+    const MYSQL_TYPE_NEWDATE = 0x0e;
+
+    const MYSQL_TYPE_VARCHAR = 0x0f;
+
+    const MYSQL_TYPE_BIT = 0x10;
+
+    const MYSQL_TYPE_TIMESTAMP2 = 0x11;
+
+    const MYSQL_TYPE_DATETIME2 = 0x12;
+
+    const MYSQL_TYPE_TIME2 = 0x13;
+
+    const MYSQL_TYPE_NEWDECIMAL = 0xf6;
+
+    const MYSQL_TYPE_ENUM = 0xf7;
+
+    const MYSQL_TYPE_SET = 0xf8;
+
+    const MYSQL_TYPE_TINY_BLOB = 0xf9;
+
+    const MYSQL_TYPE_MEDIUM_BLOB = 0xfa;
+
+    const MYSQL_TYPE_LONG_BLOB = 0xfb;
+
+    const MYSQL_TYPE_BLOB = 0xfc;
+
+    const MYSQL_TYPE_VAR_STRING = 0xfd;
+
+    const MYSQL_TYPE_STRING = 0xfe;
+
+    const MYSQL_TYPE_GEOMETRY = 0xff;
+    
     const DEFAULT_PORT = 3306;
 
     const CLIENT_LONG_FLAG = 0x00000004;
@@ -192,7 +252,11 @@ class Connection
                 $row = [];
                 
                 for ($off = 0, $i = 0; $i < $colCount; $i++) {
-                    $row[$columns[$i]['name']] = $this->readLengthEncodedString($packet, $off);
+                    if (0xFB === ord($packet[$off])) {
+                        $row[$columns[$i]['name']] = NULL;
+                    } else {
+                        $row[$columns[$i]['name']] = $this->readBinary($columns[$i]['type'], $packet, $off);
+                    }
                 }
                 
                 $rows[] = $row;
@@ -407,18 +471,50 @@ class Connection
         }
     }
     
+    protected function readUnsigned32(string $data, int & $off = 0): int
+    {
+        try {
+            if (PHP_INT_MAX >> 31) {
+                return unpack('V', substr($data, $off))[1];
+            }
+            
+            $int = unpack('v', substr($data, $off));
+            
+            return $int[1] + ($int[2] * (1 << 16));
+        } finally {
+            $off += 4;
+        }
+    }
+    
     protected function readInt64(string $data, int & $off = 0): int
     {
         try {
             if (PHP_INT_MAX >> 31) {
-                $int = unpack("V2", substr($data, $off));
+                $int = unpack('V2', substr($data, $off));
                 
                 return $int[1] + ($int[2] << 32);
             }
             
-            $int = unpack("v2V", substr($data, $off));
+            $int = unpack('v2V', substr($data, $off));
             
             return $int[1] + ($int[2] * (1 << 16)) + $int[3] * (1 << 16) * (1 << 16);
+        } finally {
+            $off += 8;
+        }
+    }
+    
+    protected function readUnsigned64(string $data, int & $off = 0): int
+    {
+        try {
+            if (PHP_INT_MAX >> 31) {
+                $int = unpack('V2', substr($data, $off));
+                
+                return $int[1] + $int[2] * (1 << 32);
+            }
+            
+            $int = unpack('v4', substr($data, $off));
+            
+            return $int[1] + ($int[2] * (1 << 16)) + ($int[3] + ($int[4] * (1 << 16))) * (1 << 16) * (1 << 16);
         } finally {
             $off += 8;
         }
@@ -456,6 +552,44 @@ class Connection
         $off += strlen($str);
         
         return $str;
+    }
+
+    protected function readBinary(int $type, string $data, int & $off)
+    {
+        $unsigned = $type & 0x80;
+        $str = $this->readLengthEncodedString($data, $off);
+        
+        switch ($type) {
+            case self::MYSQL_TYPE_STRING:
+            case self::MYSQL_TYPE_VARCHAR:
+            case self::MYSQL_TYPE_VAR_STRING:
+            case self::MYSQL_TYPE_ENUM:
+            case self::MYSQL_TYPE_SET:
+            case self::MYSQL_TYPE_LONG_BLOB:
+            case self::MYSQL_TYPE_MEDIUM_BLOB:
+            case self::MYSQL_TYPE_BLOB:
+            case self::MYSQL_TYPE_TINY_BLOB:
+            case self::MYSQL_TYPE_GEOMETRY:
+            case self::MYSQL_TYPE_BIT:
+            case self::MYSQL_TYPE_DECIMAL:
+            case self::MYSQL_TYPE_NEWDECIMAL:
+                return $str;
+            case self::MYSQL_TYPE_LONGLONG:
+            case self::MYSQL_TYPE_LONGLONG | 0x80:
+                return ($unsigned && ($str[7] & "\x80")) ? $this->readUnsigned64(str_pad($str, 8, "\0", STR_PAD_RIGHT)) : $this->readInt64(str_pad($str, 8, "\0", STR_PAD_RIGHT));
+            case self::MYSQL_TYPE_LONG:
+            case self::MYSQL_TYPE_LONG | 0x80:
+            case self::MYSQL_TYPE_INT24:
+            case self::MYSQL_TYPE_INT24 | 0x80:
+            case self::MYSQL_TYPE_TINY:
+            case self::MYSQL_TYPE_TINY | 0x80:
+                return (int) $str;
+            case self::MYSQL_TYPE_DOUBLE:
+            case self::MYSQL_TYPE_FLOAT:
+                return (float) $str;
+            case self::MYSQL_TYPE_NULL:
+                return NULL;
+        }
     }
     
     protected function encodeInt(int $val): string
