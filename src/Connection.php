@@ -278,10 +278,6 @@ class Connection
         }
     }
     
-    public static function decode_int24($str) {
-        return unpack("V", substr($str, 0, 3) . "\x00")[1];
-    }
-    
     protected function readInt32(string $data, int & $off): int
     {
         try {
