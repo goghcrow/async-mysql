@@ -165,8 +165,40 @@ class Connection
         $this->capabilities |= self::CLIENT_PLUGIN_AUTH_LENENC_CLIENT_DATA;
     }
     
-    public static function connect(string $host, string $username, string $password, int $port = self::DEFAULT_PORT): \Generator
+    public static function connect(string $dsn, string $username, string $password): \Generator
     {
+        if ('mysql:' !== substr($dsn, 0, 6)) {
+            throw new \InvalidArgumentException(sprintf('Invalid MySQL DSN: "%s"', $dsn));
+        }
+        
+        $settings = [];
+        
+        foreach (explode(';', substr($dsn, 6)) as $part) {
+            list ($k, $v) = array_map('trim', explode('=', $part));
+            
+            switch ($k) {
+                case 'host':
+                case 'dbname':
+                    $settings[$k] = $v;
+                    break;
+                default:
+                    throw new \InvalidArgumentException(sprintf('Unknown MySQL DSN param: "%s"', $k));
+            }
+        }
+        
+        if (empty($settings['host'])) {
+            throw new \InvalidArgumentException('Missing MySQL host in DSN');
+        }
+        
+        $host = $settings['host'];
+        $m = NULL;
+        
+        if (preg_match("':([1-9][0-9]*)$'", $host, $m)) {
+            $port = (int) $m[1];
+        } else {
+            $port = self::DEFAULT_PORT;
+        }
+        
         $conn = new static(yield from SocketStream::connect($host, $port));
         
         yield from $conn->handleHandshake($username, $password);
