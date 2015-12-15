@@ -114,6 +114,15 @@ class Connection
         return $conn;
     }
     
+    public function close(): \Generator
+    {
+        try {
+            yield from $this->sendPacket($this->encodeInt8(0x01));
+        } finally {
+            $this->stream->close();
+        }
+    }
+    
     protected function handleHandshake(string $username, string $password): \Generator
     {
         $packet = yield from $this->readNextPacket();

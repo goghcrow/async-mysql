@@ -65,7 +65,11 @@ class SetupTest extends \PHPUnit_Framework_TestCase
         $executor->runNewTask(call_user_func(function () {
             $conn = yield from Connection::connect('localhost', $this->getEnvParam('DB_USERNAME', ''), $this->getEnvParam('DB_PASSWORD', ''));
             
-            print_r($conn);
+            try {
+                print_r($conn);
+            } finally {
+                yield from $conn->close();
+            }
         }));
         
         $executor->run();
