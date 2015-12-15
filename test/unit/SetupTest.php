@@ -67,6 +67,12 @@ class SetupTest extends \PHPUnit_Framework_TestCase
             
             try {
                 $this->assertTrue(yield from $conn->ping());
+                
+                echo "\n\nMYSQL SERVER VARS:\n------------------\n";
+                
+                foreach (yield from $conn->query("SHOW VARIABLES") as $row) {
+                    vprintf("%s = %s\n", array_values($row));
+                }
             } finally {
                 yield from $conn->close();
             }

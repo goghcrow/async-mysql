@@ -138,6 +138,72 @@ class Connection
         }
     }
     
+    public function query(string $query): \Generator
+    {
+        try {
+            yield from $this->sendPacket($this->encodeInt8(0x03) . $query);
+            
+            $response = yield from $this->readNextPacket();
+            $colCount = $this->readLengthEncodedInt($response);
+            
+            if ($colCount < 0) {
+                return;
+            }
+            
+            $columns = [];
+            for ($i = 0; $i < $colCount; $i++) {
+                $packet = yield from $this->readNextPacket();
+                $off = 0;
+                
+                assert('def' === $this->readLengthEncodedString($packet, $off));
+                
+                $col = [
+                    'schema' => $this->readLengthEncodedString($packet, $off),
+                    'table' => $this->readLengthEncodedString($packet, $off),
+                    'org_table' => $this->readLengthEncodedString($packet, $off),
+                    'name' => $this->readLengthEncodedString($packet, $off),
+                    'org_name' => $this->readLengthEncodedString($packet, $off)
+                ];
+                
+                assert(0 < $this->readLengthEncodedInt($packet, $off));
+                
+                $col['charset'] = $this->readInt16($packet, $off);
+                $col['length'] = $this->readInt32($packet, $off);
+                $col['type'] = $this->readInt8($packet, $off);
+                $col['flags'] = $this->readInt16($packet, $off);
+                $col['decimals'] = $this->readInt8($packet, $off);
+                
+                assert("\0\0" === $this->readFixedLengthString($packet, 2, $off));
+                
+                $columns[] = $col;
+            }
+            
+            assert(0xFE === ord(yield from $this->readNextPacket()));
+            
+            $rows = [];
+            
+            while (true) {
+                $packet = yield from $this->readNextPacket();
+                
+                if (0xFE === ord($packet)) {
+                    break;
+                }
+                
+                $row = [];
+                
+                for ($off = 0, $i = 0; $i < $colCount; $i++) {
+                    $row[$columns[$i]['name']] = $this->readLengthEncodedString($packet, $off);
+                }
+                
+                $rows[] = $row;
+            }
+            
+            return $rows;
+        } finally {
+            $this->sequence = -1;
+        }
+    }
+    
     protected function handleHandshake(string $username, string $password): \Generator
     {
         try {
@@ -281,7 +347,31 @@ class Connection
         return $hash ^ sha1(substr($scramble, 0, 20) . sha1($hash, true), true);
     }
     
-    protected function readInt8(string $data, int & $off): int
+    protected function readLengthEncodedInt(string $data, int & $off = 0): int
+    {
+        $int = ord(substr($data, $off));
+        $off++;
+        
+        if ($int <= 0xfb) {
+            return $int;
+        }
+        
+        if ($int == 0xfc) {
+            return $this->readInt16($data, $off);
+        }
+        
+        if ($int == 0xfd) {
+            return $this->readInt24($data, $off);
+        }
+        
+        if ($int == 0xfe) {
+            return $this->readInt64($data, $off);
+        }
+        
+        throw new \RangeException("$int is not in ranges [0x00, 0xfa] or [0xfc, 0xfe]");
+    }
+    
+    protected function readInt8(string $data, int & $off = 0): int
     {
         try {
             return ord(substr($data, $off));
@@ -290,7 +380,7 @@ class Connection
         }
     }
     
-    protected function readInt16(string $data, int & $off): int
+    protected function readInt16(string $data, int & $off = 0): int
     {
         try {
             return unpack('v', substr($data, $off))[1];
@@ -299,7 +389,7 @@ class Connection
         }
     }
     
-    protected function readInt24(string $data, int & $off): int
+    protected function readInt24(string $data, int & $off = 0): int
     {
         try {
             return unpack('V', substr($data, $off, 3) . "\x00")[1];
@@ -308,7 +398,7 @@ class Connection
         }
     }
     
-    protected function readInt32(string $data, int & $off): int
+    protected function readInt32(string $data, int & $off = 0): int
     {
         try {
             return unpack('V', substr($data, $off))[1];
@@ -317,7 +407,24 @@ class Connection
         }
     }
     
-    protected function readFixedLengthString(string $data, int $len, int & $off): string
+    protected function readInt64(string $data, int & $off = 0): int
+    {
+        try {
+            if (PHP_INT_MAX >> 31) {
+                $int = unpack("V2", substr($data, $off));
+                
+                return $int[1] + ($int[2] << 32);
+            }
+            
+            $int = unpack("v2V", substr($data, $off));
+            
+            return $int[1] + ($int[2] * (1 << 16)) + $int[3] * (1 << 16) * (1 << 16);
+        } finally {
+            $off += 8;
+        }
+    }
+    
+    protected function readFixedLengthString(string $data, int $len, int & $off = 0): string
     {
         $str = substr($data, $off, $len);
         $off += strlen($str);
@@ -325,10 +432,28 @@ class Connection
         return $str;
     }
     
-    protected function readNullString(string $data, int & $off): string
+    protected function readNullString(string $data, int & $off = 0): string
     {
         $str = substr($data, $off, strpos($data, "\0", $off) - 1);
         $off += strlen($str) + 1;
+        
+        return $str;
+    }
+    
+    protected function readLengthEncodedString(string $data, int & $off = 0)
+    {
+        $len = $this->readLengthEncodedInt($data, $off);
+        
+        if ($len < 1) {
+            return '';
+        }
+        
+        if ($len === 0xfb) {
+            return NULL;
+        }
+        
+        $str = substr($data, $off, $len);
+        $off += strlen($str);
         
         return $str;
     }
