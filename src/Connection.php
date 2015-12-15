@@ -185,6 +185,7 @@ class Connection
         $this->capabilities |= self::CLIENT_SESSION_TRACK;
         $this->capabilities |= self::CLIENT_TRANSACTIONS;
         $this->capabilities |= self::CLIENT_PROTOCOL_41;
+        $this->capabilities |= self::CLIENT_DEPRECATE_EOF;
         $this->capabilities |= self::CLIENT_SECURE_CONNECTION;
         $this->capabilities |= self::CLIENT_MULTI_RESULTS;
         $this->capabilities |= self::CLIENT_PS_MULTI_RESULTS;
@@ -309,15 +310,19 @@ class Connection
                 $columns[] = $col;
             }
             
-            $this->assert(0xFE === ord(yield from $this->readNextPacket()), 'Missing EOF packet after column definitions');
+            if (!($this->capabilities & self::CLIENT_DEPRECATE_EOF)) {
+                $this->assert(0xFE === ord(yield from $this->readNextPacket()), 'Missing EOF packet after column definitions');
+            }
             
             $rows = [];
             
             while (true) {
                 $packet = yield from $this->readNextPacket();
                 
-                if (0xFE === ord($packet)) {
-                    break;
+                switch (ord($packet)) {
+                    case 0x00:
+                    case 0xFE:
+                        break 2;
                 }
                 
                 $row = [];
@@ -336,7 +341,7 @@ class Connection
             $off = 1;
             
             $affected = $this->readLengthEncodedInt($packet, $off);
-            $lastInsetId = $this->readLengthEncodedInt($packet, $off);
+            $lastInsertId = $this->readLengthEncodedInt($packet, $off);
 //             $statusFlags = 0;
 //             $numWarnings = 0;
             
