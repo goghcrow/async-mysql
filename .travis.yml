@@ -21,6 +21,7 @@ install:
   - >
     mysql -e "CREATE DATABASE atest;" -uroot;
     export DB_DSN="mysql:host=localhost;dbname=atest";
+    export DB_NAME =atest;
     export DB_USERNAME=root;
   - travis_retry composer update --no-interaction --prefer-source $DEPS
   - composer info -i

@@ -78,7 +78,7 @@ class SetupTest extends \PHPUnit_Framework_TestCase
                 
                 echo "\n";
                 
-                print_r(yield from $conn->query("SELECT * FROM test.customer ORDER BY name DESC"));
+                print_r(yield from $conn->query("SELECT * FROM {$this->getEnvParam('DB_NAME')}.customer ORDER BY name DESC"));
             } finally {
                 yield from $conn->close();
             }
