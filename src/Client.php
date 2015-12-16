@@ -538,4 +538,59 @@ class Client
     {
         return pack('VV', $val & 0XFFFFFFFF, $val >> 32);
     }
+    
+    public function readBinary(int $type, string $data, int & $off)
+    {
+        // TODO: Implement more data types...
+        
+        $unsigned = $type & 0x80;
+        
+        switch ($type) {
+            case self::MYSQL_TYPE_STRING:
+            case self::MYSQL_TYPE_VARCHAR:
+            case self::MYSQL_TYPE_VAR_STRING:
+            case self::MYSQL_TYPE_ENUM:
+            case self::MYSQL_TYPE_SET:
+            case self::MYSQL_TYPE_LONG_BLOB:
+            case self::MYSQL_TYPE_MEDIUM_BLOB:
+            case self::MYSQL_TYPE_BLOB:
+            case self::MYSQL_TYPE_TINY_BLOB:
+            case self::MYSQL_TYPE_GEOMETRY:
+            case self::MYSQL_TYPE_BIT:
+            case self::MYSQL_TYPE_DECIMAL:
+            case self::MYSQL_TYPE_NEWDECIMAL:
+                return $this->readLengthEncodedString($data, $off);
+            case self::MYSQL_TYPE_LONGLONG:
+            case self::MYSQL_TYPE_LONGLONG | 0x80:
+                return $unsigned && ($data[$off + 7] & "\x80") ? $this->readUnsigned64($data, $off) : $this->readInt64($data, $off);
+            case self::MYSQL_TYPE_LONG:
+            case self::MYSQL_TYPE_LONG | 0x80:
+            case self::MYSQL_TYPE_INT24:
+            case self::MYSQL_TYPE_INT24 | 0x80:
+                $shift = PHP_INT_MAX >> 31 ? 32 : 0;
+                
+                return $unsigned && ($data[$off + 3] & "\x80") ? $this->readUnsigned32($data, $off) : (($this->readInt32($data, $off) << $shift) >> $shift);
+            case self::MYSQL_TYPE_TINY:
+            case self::MYSQL_TYPE_TINY | 0x80:
+                $shift = PHP_INT_MAX >> 31 ? 56 : 24;
+                
+                return $unsigned ? $this->readInt8($data, $off) : (($this->readInt8($data, $off) << $shift) >> $shift);
+            case self::MYSQL_TYPE_DOUBLE:
+                try {
+                    return unpack("d", substr($data, $off))[1];
+                } finally {
+                    $off += 8;
+                }
+            case self::MYSQL_TYPE_FLOAT:
+                try {
+                    return unpack("f", substr($data, $off))[1];
+                } finally {
+                    $off += 4;
+                }
+            case self::MYSQL_TYPE_NULL:
+                return NULL;
+            default:
+                throw new ProtocolError(sprintf('Unsupported column type: 0x%02X', $type));
+        }
+    }
 }

@@ -82,7 +82,7 @@ class SetupTest extends \PHPUnit_Framework_TestCase
                 
                 $stmt = yield from $conn->prepare("SELECT * FROM customer ORDER BY name DESC");
                 
-//                 yield from $stmt->execute();
+                print_r(yield from $stmt->execute());
             } finally {
                 yield from $conn->close();
             }

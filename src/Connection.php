@@ -182,55 +182,59 @@ class Connection
     
     public function prepare(string $sql): \Generator
     {
-        yield from $this->client->sendPacket($this->client->encodeInt8(0x16) . $sql);
-        
-        $packet = yield from $this->client->readNextPacket();
-        $off = 0;
-        
-        $this->assert($this->client->readInt8($packet, $off) === 0x00, 'Status is not OK');
-        
-        $id = $this->client->readInt32($packet, $off);
-        
-        $cc = $this->client->readInt16($packet, $off);
-        $pc = $this->client->readInt16($packet, $off);
-        
-        $this->assert($this->client->readInt8($packet, $off) === 0x00, 'Missing filler');
-        
-        // Warning count:
-        $this->client->readInt16($packet, $off);
-        
-        $cols = [];
-        $params = [];
-        
-        // Params:
-        for ($i = 0; $i < $pc; $i++) {
-            $params[] = $this->parseColumnDefinition(yield from $this->client->readNextPacket());
+        try {
+            yield from $this->client->sendPacket($this->client->encodeInt8(0x16) . $sql);
+            
+            $packet = yield from $this->client->readNextPacket();
+            $off = 0;
+            
+            $this->assert($this->client->readInt8($packet, $off) === 0x00, 'Status is not OK');
+            
+            $id = $this->client->readInt32($packet, $off);
+            
+            $cc = $this->client->readInt16($packet, $off);
+            $pc = $this->client->readInt16($packet, $off);
+            
+            $this->assert($this->client->readInt8($packet, $off) === 0x00, 'Missing filler');
+            
+            // Warning count:
+            $this->client->readInt16($packet, $off);
+            
+            $cols = [];
+            $params = [];
+            
+            // Params:
+            for ($i = 0; $i < $pc; $i++) {
+                $params[] = $this->parseColumnDefinition(yield from $this->client->readNextPacket());
+            }
+            
+            if ($pc > 0 && !$this->client->hasCapabilty(Client::CLIENT_DEPRECATE_EOF)) {
+                $this->assert(0xFE === ord(yield from $this->client->readNextPacket()), 'Missing EOF packet after param definitions');
+            }
+            
+            // Columns:
+            for ($i = 0; $i < $cc; $i++) {
+                $cols[] = $this->parseColumnDefinition(yield from $this->client->readNextPacket());
+            }
+            
+            if ($cc > 0 && !$this->client->hasCapabilty(Client::CLIENT_DEPRECATE_EOF)) {
+                $this->assert(0xFE === ord(yield from $this->client->readNextPacket()), 'Missing EOF packet after column definitions');
+            }
+            
+            return new Statement($this, $id, $cols, $params);
+        } finally {
+            $this->client->flush();
         }
-        
-        if ($pc > 0 && !$this->client->hasCapabilty(Client::CLIENT_DEPRECATE_EOF)) {
-            $this->assert(0xFE === ord(yield from $this->client->readNextPacket()), 'Missing EOF packet after param definitions');
-        }
-        
-        // Columns:
-        for ($i = 0; $i < $cc; $i++) {
-            $cols[] = $this->parseColumnDefinition(yield from $this->client->readNextPacket());
-        }
-        
-        if ($cc > 0 && !$this->client->hasCapabilty(Client::CLIENT_DEPRECATE_EOF)) {
-            $this->assert(0xFE === ord(yield from $this->client->readNextPacket()), 'Missing EOF packet after column definitions');
-        }
-        
-        return new Statement($this->client, $id, $cols, $params);
     }
     
-    protected function assert(bool $condition, string $message)
+    public function assert(bool $condition, string $message)
     {
         if (!$condition) {
             throw new ProtocolError($message);
         }
     }
     
-    protected function parseColumnDefinition(string $packet): array
+    public function parseColumnDefinition(string $packet): array
     {
         $off = 0;
         
