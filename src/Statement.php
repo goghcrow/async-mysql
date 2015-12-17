@@ -138,23 +138,23 @@ class Statement
                 $off = 0;
                 $this->conn->assert($this->client->readInt8($packet, $off) === 0x00, 'Missing packet header in result row');
                 
-                $fields = [];
+                $row = [];
                 for ($i = 0; $i < $cc; $i++) {
                     if (ord($packet[$off + (($i + 2) >> 3)]) & (1 << (($i + 2) % 8))) {
-                        $fields[$i] = NULL;
+                        $row[$i] = NULL;
                     }
                 }
                 $off += ($cc + 9) >> 3;
                 
-                for ($i = 0; $off < \strlen($packet); $i++) {
-                    while (array_key_exists($i, $fields)) {
+                for ($i = 0; $off < strlen($packet); $i++) {
+                    while (array_key_exists($i, $row)) {
                         $i++;
                     }
                     
-                    $fields[$i] = $this->client->readBinary($columns[$i]['type'], $packet, $off);
+                    $row[$i] = $this->client->readBinary($columns[$i]['type'], $packet, $off);
                 }
                 
-                $rows[] = array_combine($names, $fields);
+                $rows[] = array_combine($names, $row);
             }
             
             return $rows;
