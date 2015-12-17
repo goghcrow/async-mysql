@@ -15,7 +15,7 @@ class ConnectionException extends \RuntimeException
 {
     protected $sqlState;
     
-    public function __construct(string $message, int $code, string $sqlState = '', \Throwable $cause = NULL)
+    public function __construct(string $message, int $code = 0, string $sqlState = '', \Throwable $cause = NULL)
     {
         parent::__construct($message, $code, $cause);
         

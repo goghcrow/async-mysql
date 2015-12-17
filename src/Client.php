@@ -539,6 +539,66 @@ class Client
         return pack('VV', $val & 0XFFFFFFFF, $val >> 32);
     }
     
+    public function isLittleEndian()
+    {
+        static $result = NULL;
+        
+        if ($result === NULL) {
+            return $result = unpack('S', "\x01\x00")[1] === 1;
+        }
+        
+        return $result;
+    }
+    
+    public function encodeBinary($val): array
+    {
+        $unsigned = false;
+        
+        switch (gettype($val)) {
+            case 'boolean':
+                $type = self::MYSQL_TYPE_TINY;
+                $value = $val ? "\x01" : "\0";
+                break;
+            case 'integer':
+                if ($val >= 0) {
+                    $unsigned = true;
+                }
+                
+                if ($val >= 0 && $val < (1 << 15)) {
+                    $type = self::MYSQL_TYPE_SHORT;
+                    $value = $this->encodeInt16($val);
+                } else {
+                    $type = self::MYSQL_TYPE_LONGLONG;
+                    $value = $this->encodeInt64($val);
+                }
+                break;
+            case 'double':
+                $type = self::MYSQL_TYPE_DOUBLE;
+                $value = pack('d', $val);
+                
+                if ($this->isLittleEndian()) {
+                    $value = strrev($value);
+                }
+                break;
+            case 'string':
+                $type = self::MYSQL_TYPE_LONG_BLOB;
+                $value = $this->encodeInt(strlen($val)) . $val;
+                break;
+            case 'NULL':
+                $type = self::MYSQL_TYPE_NULL;
+                $value = '';
+                break;
+            default:
+                throw new ProtocolError("Unexpected type for binding parameter: " . gettype($val));
+        }
+        
+        return [
+            $unsigned,
+            $type,
+            $value
+        ];
+    }
+    
     public function readBinary(int $type, string $data, int & $off)
     {
         // TODO: Implement more data types...

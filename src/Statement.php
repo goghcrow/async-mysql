@@ -31,6 +31,8 @@ class Statement
     
     protected $params;
     
+    protected $bound = [];
+    
     public function __construct(Connection $conn, int $id, array $columns, array $params)
     {
         $this->conn = $conn;
@@ -40,8 +42,17 @@ class Statement
         $this->params = $params;
     }
     
+    public function bindValue(int $pos, $val)
+    {
+        $this->bound[$pos] = $val;
+    }
+    
     public function execute(): \Generator
     {
+        if (count($this->params) !== count($this->bound)) {
+            throw new ConnectionException(sprintf('Statement contains %u placeholders, given %u values', count($this->params), count($this->bound)));
+        }
+        
         try {
             $packet = $this->client->encodeInt8(0x17);
             $packet .= $this->client->encodeInt32($this->id);
@@ -50,6 +61,43 @@ class Statement
             
             $packet .= $this->client->encodeInt8($flags);
             $packet .= $this->client->encodeInt32(1);
+            
+            $bound = !empty($this->bound);
+            
+            if (!empty($this->params)) {
+                $args = $this->bound;
+                $types = '';
+                $values = '';
+                
+                ksort($args, SORT_NUMERIC);
+                
+                // Append NULL-bitmap with all bits set to 0:
+                $nullOffset = strlen($packet);
+                $packet .= str_repeat("\0", (count($this->bound) + 7) >> 3);
+                
+                foreach ($args as $i => $val) {
+                    if ($val === NULL) {
+                        // Set NULL bit at param position to 1:
+                        $off = $nullOffset + ($i >> 3);
+                        $packet[$off] = $packet[$off] | chr(1 << ($i % 8));
+                    } else {
+                        $bound = true;
+                    }
+                    
+                    list ($unsigned, $type, $val) = $this->client->encodeBinary($val);
+                    
+                    $types .= $this->client->encodeInt8($type);
+                    $types .= $unsigned ? "\x80" : "\0";
+                    $values .= $val;
+                }
+                
+                $packet .= $this->client->encodeInt8((int) $bound);
+                
+                if ($bound) {
+                    $packet .= $types;
+                    $packet .= $values;
+                }
+            }
             
             yield from $this->client->sendPacket($packet);
             
