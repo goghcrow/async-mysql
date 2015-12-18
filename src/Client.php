@@ -173,6 +173,10 @@ class Client
     
     protected $authPluginData = '';
     
+    protected $connected = false;
+    
+    protected $lastInsertId;
+    
     protected $info = [];
     
     public function __construct(DuplexStreamInterface $stream)
@@ -202,6 +206,11 @@ class Client
         $this->sequence = -1;
     }
     
+    public function getLastInsertId()
+    {
+        return $this->lastInsertId;
+    }
+    
     public function hasCapabilty(int $caps): bool
     {
         return ($this->capabilities & $caps) === $caps;
@@ -209,6 +218,8 @@ class Client
     
     public function handleHandshake(string $username, string $password): \Generator
     {
+        $this->connected = true;
+        
         try {
             $packet = yield from $this->readNextPacket();
             $off = 0;
@@ -287,8 +298,12 @@ class Client
             $packet = yield from $this->readNextPacket();
     
             if (ord($packet) !== 0) {
-                var_dump($packet);
+                throw new ProtocolError(sprintf('Handshake failed, response packet is %02X', ord($packet)));
             }
+        } catch (\Throwable $e) {
+            $this->connected = false;
+            
+            throw $e;
         } finally {
             $this->sequence = -1;
         }
@@ -296,6 +311,10 @@ class Client
     
     public function readNextPacket(): \Generator
     {
+        if (!$this->connected) {
+            throw new ConnectionException('Cannot read packges when connection has not been established');
+        }
+        
         $header = yield readBuffer($this->stream, 4);
         $off = 0;
     
@@ -309,6 +328,13 @@ class Client
         }
     
         switch (ord($payload)) {
+            case 0x00:
+            case 0xFE:
+                $off = 1;
+                $this->readLengthEncodedInt($payload, $off);
+                
+                $this->lastInsertId = $this->readLengthEncodedInt($payload, $off) ?: NULL;
+                break;
             case 0xFF:
                 $off = 1;
                 $code = $this->readInt16($payload, $off);
@@ -336,10 +362,38 @@ class Client
         return $payload;
     }
     
+    public function canSendCommand(): bool
+    {
+        return $this->connected && $this->sequence < 0;
+    }
+    
+    public function sendCommand(string $packet): \Generator
+    {
+        if (!$this->connected) {
+            throw new ConnectionException('Cannot send commands before a connection has been established');
+        }
+        
+        if ($this->sequence >= 0) {
+            throw new ConnectionException('Cannot send command while the connection is busy processing another command');
+        }
+        
+        $packet = $this->encodeInt24(strlen($packet)) . chr(++$this->sequence) . $packet;
+        
+        return yield from $this->stream->write($packet);
+    }
+
     public function sendPacket(string $packet): \Generator
     {
+        if (!$this->connected) {
+            throw new ConnectionException('Cannot send packet before a connection has been established');
+        }
+        
+        if ($this->sequence < 0) {
+            throw new ConnectionException('Cannot send additional package when the connection is not processing a command');
+        }
+        
         $packet = $this->encodeInt24(strlen($packet)) . chr(++$this->sequence) . $packet;
-    
+        
         return yield from $this->stream->write($packet);
     }
     

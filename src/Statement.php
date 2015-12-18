@@ -33,6 +33,8 @@ class Statement
     
     protected $bound = [];
     
+    protected $processing = true;
+    
     public function __construct(Connection $conn, int $id, array $columns, array $params)
     {
         $this->conn = $conn;
@@ -53,113 +55,78 @@ class Statement
             throw new ConnectionException(sprintf('Statement contains %u placeholders, given %u values', count($this->params), count($this->bound)));
         }
         
-        try {
-            $packet = $this->client->encodeInt8(0x17);
-            $packet .= $this->client->encodeInt32($this->id);
+        $packet = $this->client->encodeInt8(0x17);
+        $packet .= $this->client->encodeInt32($this->id);
+        
+        $flags = self::CURSOR_TYPE_NO_CURSOR;
+        
+        $packet .= $this->client->encodeInt8($flags);
+        $packet .= $this->client->encodeInt32(1);
+        
+        $bound = !empty($this->bound);
+        
+        if (!empty($this->params)) {
+            $args = $this->bound;
+            $types = '';
+            $values = '';
             
-            $flags = self::CURSOR_TYPE_NO_CURSOR;
+            ksort($args, SORT_NUMERIC);
             
-            $packet .= $this->client->encodeInt8($flags);
-            $packet .= $this->client->encodeInt32(1);
+            // Append NULL-bitmap with all bits set to 0:
+            $nullOffset = strlen($packet);
+            $packet .= str_repeat("\0", (count($this->bound) + 7) >> 3);
             
-            $bound = !empty($this->bound);
-            
-            if (!empty($this->params)) {
-                $args = $this->bound;
-                $types = '';
-                $values = '';
-                
-                ksort($args, SORT_NUMERIC);
-                
-                // Append NULL-bitmap with all bits set to 0:
-                $nullOffset = strlen($packet);
-                $packet .= str_repeat("\0", (count($this->bound) + 7) >> 3);
-                
-                foreach ($args as $i => $val) {
-                    if ($val === NULL) {
-                        // Set NULL bit at param position to 1:
-                        $off = $nullOffset + ($i >> 3);
-                        $packet[$off] = $packet[$off] | chr(1 << ($i % 8));
-                    } else {
-                        $bound = true;
-                    }
-                    
-                    list ($unsigned, $type, $val) = $this->client->encodeBinary($val);
-                    
-                    $types .= $this->client->encodeInt8($type);
-                    $types .= $unsigned ? "\x80" : "\0";
-                    $values .= $val;
+            foreach ($args as $i => $val) {
+                if ($val === NULL) {
+                    // Set NULL bit at param position to 1:
+                    $off = $nullOffset + ($i >> 3);
+                    $packet[$off] = $packet[$off] | chr(1 << ($i % 8));
+                } else {
+                    $bound = true;
                 }
                 
-                $packet .= $this->client->encodeInt8((int) $bound);
+                list ($unsigned, $type, $val) = $this->client->encodeBinary($val);
                 
-                if ($bound) {
-                    $packet .= $types;
-                    $packet .= $values;
-                }
+                $types .= $this->client->encodeInt8($type);
+                $types .= $unsigned ? "\x80" : "\0";
+                $values .= $val;
             }
             
-            yield from $this->client->sendPacket($packet);
+            $packet .= $this->client->encodeInt8((int) $bound);
             
-            $packet = yield from $this->client->readNextPacket();
-            $off = 0;
-            if (ord($packet) === 0x00 || ord($packet) === 0xFE) {
-                $off = 1;
-                
-                $affected = $this->client->readLengthEncodedInt($packet, $off);
-                // $lastInsertId = $this->client->readLengthEncodedInt($packet, $off);
-
-                return $affected;
+            if ($bound) {
+                $packet .= $types;
+                $packet .= $values;
             }
-            
-            $columns = [];
-            $cc = $this->client->readLengthEncodedInt($packet, $off);
-            
-            for ($i = 0; $i < $cc; $i++) {
-                $columns[] = $this->conn->parseColumnDefinition(yield from $this->client->readNextPacket());
-            }
-            
-            if ($cc > 0 && !$this->client->hasCapabilty(Client::CLIENT_DEPRECATE_EOF)) {
-                $this->conn->assert(ord(yield from $this->client->readNextPacket()) === 0xFE, 'Missing EOF after column definitions');
-            }
-            
-            $rows = [];
-            $names = array_map(function (array $col) {
-                return $col['name'];
-            }, $columns);
-            
-            while (true) {
-                $packet = yield from $this->client->readNextPacket();
-                
-                if (ord($packet) === 0xFE) {
-                    break;
-                }
-                
-                $off = 0;
-                $this->conn->assert($this->client->readInt8($packet, $off) === 0x00, 'Missing packet header in result row');
-                
-                $row = [];
-                for ($i = 0; $i < $cc; $i++) {
-                    if (ord($packet[$off + (($i + 2) >> 3)]) & (1 << (($i + 2) % 8))) {
-                        $row[$i] = NULL;
-                    }
-                }
-                $off += ($cc + 9) >> 3;
-                
-                for ($i = 0; $off < strlen($packet); $i++) {
-                    while (array_key_exists($i, $row)) {
-                        $i++;
-                    }
-                    
-                    $row[$i] = $this->client->readBinary($columns[$i]['type'], $packet, $off);
-                }
-                
-                $rows[] = array_combine($names, $row);
-            }
-            
-            return $rows;
-        } finally {
-            $this->client->flush();
         }
+        
+        yield from $this->client->sendCommand($packet);
+        
+        $this->processing = true;
+        
+        $packet = yield from $this->client->readNextPacket();
+        $off = 0;
+        
+        if (ord($packet) === 0x00 || ord($packet) === 0xFE) {
+            $off = 1;
+            $affected = $this->client->readLengthEncodedInt($packet, $off);
+            
+            $this->client->flush();
+
+            return new ResultSet($this->conn, [], $affected);
+        }
+        
+        $columns = [];
+        $cc = $this->client->readLengthEncodedInt($packet, $off);
+        
+        for ($i = 0; $i < $cc; $i++) {
+            $columns[] = $this->conn->parseColumnDefinition(yield from $this->client->readNextPacket());
+        }
+        
+        if ($cc > 0 && !$this->client->hasCapabilty(Client::CLIENT_DEPRECATE_EOF)) {
+            $this->conn->assert(ord(yield from $this->client->readNextPacket()) === 0xFE, 'Missing EOF after column definitions');
+        }
+        
+        return new ResultSet($this->conn, $columns, -1);
     }
 }

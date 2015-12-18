@@ -73,10 +73,17 @@ class Connection
         return $conn;
     }
     
+    public function lastInsertId()
+    {
+        return $this->client->getLastInsertId();
+    }
+    
     public function close(): \Generator
     {
         try {
-            yield from $this->client->sendPacket($this->client->encodeInt8(0x01));
+            if ($this->client->canSendCommand()) {
+                yield from $this->client->sendCommand($this->client->encodeInt8(0x01));
+            }
         } finally {
             $this->client->close();
         }
@@ -85,7 +92,7 @@ class Connection
     public function changeDefaultSchema(string $schema): \Generator
     {
         try {
-            yield from $this->client->sendPacket($this->client->encodeInt8(0x02) . $schema);
+            yield from $this->client->sendCommand($this->client->encodeInt8(0x02) . $schema);
             yield from $this->client->readNextPacket();
         } finally {
             $this->client->flush();
@@ -95,7 +102,7 @@ class Connection
     public function ping(): \Generator
     {
         try {
-            yield from $this->client->sendPacket($this->client->encodeInt8(0x0E));
+            yield from $this->client->sendCommand($this->client->encodeInt8(0x0E));
             
             $response = yield from $this->client->readNextPacket();
             
@@ -108,7 +115,7 @@ class Connection
     public function query(string $query): \Generator
     {
         try {
-            yield from $this->client->sendPacket($this->client->encodeInt8(0x03) . $query);
+            yield from $this->client->sendCommand($this->client->encodeInt8(0x03) . $query);
             
             $response = yield from $this->client->readNextPacket();
             $colCount = $this->client->readLengthEncodedInt($response);
@@ -183,7 +190,7 @@ class Connection
     public function prepare(string $sql): \Generator
     {
         try {
-            yield from $this->client->sendPacket($this->client->encodeInt8(0x16) . $sql);
+            yield from $this->client->sendCommand($this->client->encodeInt8(0x16) . $sql);
             
             $packet = yield from $this->client->readNextPacket();
             $off = 0;

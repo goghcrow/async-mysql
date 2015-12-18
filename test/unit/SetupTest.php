@@ -70,20 +70,37 @@ class SetupTest extends \PHPUnit_Framework_TestCase
             try {
                 $this->assertTrue(yield from $conn->ping());
                 
-                echo "\nMYSQL SERVER VARS:\n------------------\n";
+                $rows = yield from $conn->query("SELECT * FROM customer ORDER BY name DESC");
+                $this->assertCount(4, $rows);
+                $this->assertEquals([
+                    'MySQL',
+                    'KoolKode',
+                    'Git',
+                    'Async'
+                ], array_column($rows, 'name'));
                 
-                foreach (yield from $conn->query("SHOW VARIABLES") as $row) {
-                    vprintf("%s = %s\n", array_values($row));
-                }
+                $stmt = yield from $conn->prepare("UPDATE customer SET name = ? WHERE name = ?");
+                $stmt->bindValue(0, 'GitHub');
+                $stmt->bindValue(1, 'Git');
                 
-                echo "\n";
-                
-                print_r(yield from $conn->query("SELECT * FROM customer ORDER BY name DESC"));
+                $result = yield from $stmt->execute();
+                $this->assertTrue($result instanceof ResultSet);
+                $this->assertEquals(1, $result->rowCount());
                 
                 $stmt = yield from $conn->prepare("SELECT * FROM customer WHERE id > ? ORDER BY name DESC");
                 $stmt->bindValue(0, 1);
                 
-                print_r(yield from $stmt->execute());
+                $result = yield from $stmt->execute();
+                $this->assertTrue($result instanceof ResultSet);
+                $this->assertEquals(-1, $result->rowCount());
+                
+                $values = yield from $result->fetchColumnArray('name');
+                $this->assertCount(3, $values);
+                $this->assertEquals([
+                    'MySQL',
+                    'GitHub',
+                    'Async'
+                ], $values);
             } finally {
                 yield from $conn->close();
             }
