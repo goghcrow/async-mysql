@@ -13,7 +13,7 @@ namespace KoolKode\Async\MySQL;
 
 use KoolKode\Async\Stream\SocketStream;
 
-class Connection
+class Connection implements ConnectionInterface
 {
     const DEFAULT_PORT = 3306;
     
@@ -112,81 +112,6 @@ class Connection
         }
     }
     
-    public function query(string $query): \Generator
-    {
-        try {
-            yield from $this->client->sendCommand($this->client->encodeInt8(0x03) . $query);
-            
-            $response = yield from $this->client->readNextPacket();
-            $colCount = $this->client->readLengthEncodedInt($response);
-            
-            if ($colCount < 0) {
-                return;
-            }
-            
-            $columns = [];
-            for ($i = 0; $i < $colCount; $i++) {
-                $columns[] = $this->parseColumnDefinition(yield from $this->client->readNextPacket());
-            }
-            
-            if (!$this->client->hasCapabilty(Client::CLIENT_DEPRECATE_EOF)) {
-                $this->assert(0xFE === ord(yield from $this->client->readNextPacket()), 'Missing EOF packet after column definitions');
-            }
-            
-            $rows = [];
-            
-            while (true) {
-                $packet = yield from $this->client->readNextPacket();
-                
-                switch (ord($packet)) {
-                    case 0x00:
-                    case 0xFE:
-                        break 2;
-                }
-                
-                $row = [];
-                
-                for ($off = 0, $i = 0; $i < $colCount; $i++) {
-                    if (0xFB === ord($packet[$off])) {
-                        $row[$columns[$i]['name']] = NULL;
-                    } else {
-                        $row[$columns[$i]['name']] = $this->readTextCol($columns[$i]['type'], $packet, $off);
-                    }
-                }
-                
-                $rows[] = $row;
-            }
-            
-            $off = 1;
-            
-            $affected = $this->client->readLengthEncodedInt($packet, $off);
-            $lastInsertId = $this->client->readLengthEncodedInt($packet, $off);
-//             $statusFlags = 0;
-//             $numWarnings = 0;
-            
-//             if ($this->capabilities & Client::CLIENT_PROTOCOL_41) {
-//                 $statusFlags = $this->client->readInt16($packet, $off);
-//                 $numWarnings = $this->client->readInt16($packet, $off);
-//             } elseif ($this->capabilities & Client::CLIENT_TRANSACTIONS) {
-//                 $statusFlags = $this->client->readInt16($packet, $off);
-//             }
-            
-            if ($this->client->hasCapabilty(Client::CLIENT_SESSION_TRACK)) {
-                $info = $this->client->readLengthEncodedString($packet, $off);
-                
-                if ($statusFlags & Client::SERVER_SESSION_STATE_CHANGED) {
-                    $changes = $this->client->readLengthEncodedString($packet, $off);
-                }
-            } else {
-                $info = substr($packet, $off);
-            }
-            
-            return $rows;
-        } finally {
-            $this->client->flush();
-        }
-    }
-    
     public function prepare(string $sql): \Generator
     {
         try {
@@ -266,43 +191,5 @@ class Connection
         $this->assert("\0\0" === $this->client->readFixedLengthString($packet, 2, $off), 'Missing column definition filler');
         
         return $col;
-    }
-    
-    protected function readTextCol(int $type, string $data, int & $off)
-    {
-        $unsigned = $type & 0x80;
-        $str = $this->client->readLengthEncodedString($data, $off);
-        
-        switch ($type) {
-            case Client::MYSQL_TYPE_STRING:
-            case Client::MYSQL_TYPE_VARCHAR:
-            case Client::MYSQL_TYPE_VAR_STRING:
-            case Client::MYSQL_TYPE_ENUM:
-            case Client::MYSQL_TYPE_SET:
-            case Client::MYSQL_TYPE_LONG_BLOB:
-            case Client::MYSQL_TYPE_MEDIUM_BLOB:
-            case Client::MYSQL_TYPE_BLOB:
-            case Client::MYSQL_TYPE_TINY_BLOB:
-            case Client::MYSQL_TYPE_GEOMETRY:
-            case Client::MYSQL_TYPE_BIT:
-            case Client::MYSQL_TYPE_DECIMAL:
-            case Client::MYSQL_TYPE_NEWDECIMAL:
-                return $str;
-            case Client::MYSQL_TYPE_LONGLONG:
-            case Client::MYSQL_TYPE_LONGLONG | 0x80:
-                return ($unsigned && ($str[7] & "\x80")) ? $this->client->readUnsigned64(str_pad($str, 8, "\0", STR_PAD_RIGHT)) : $this->client->readInt64(str_pad($str, 8, "\0", STR_PAD_RIGHT));
-            case Client::MYSQL_TYPE_LONG:
-            case Client::MYSQL_TYPE_LONG | 0x80:
-            case Client::MYSQL_TYPE_INT24:
-            case Client::MYSQL_TYPE_INT24 | 0x80:
-            case Client::MYSQL_TYPE_TINY:
-            case Client::MYSQL_TYPE_TINY | 0x80:
-                return (int) $str;
-            case Client::MYSQL_TYPE_DOUBLE:
-            case Client::MYSQL_TYPE_FLOAT:
-                return (float) $str;
-            case Client::MYSQL_TYPE_NULL:
-                return NULL;
-        }
     }
 }

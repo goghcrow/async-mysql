@@ -70,14 +70,25 @@ class SetupTest extends \PHPUnit_Framework_TestCase
             try {
                 $this->assertTrue(yield from $conn->ping());
                 
-                $rows = yield from $conn->query("SELECT * FROM customer ORDER BY name DESC");
-                $this->assertCount(4, $rows);
-                $this->assertEquals([
-                    'MySQL',
-                    'KoolKode',
-                    'Git',
-                    'Async'
-                ], array_column($rows, 'name'));
+                $stmt = yield from $conn->prepare("SELECT * FROM customer ORDER BY name DESC");
+                $this->assertTrue($stmt instanceof Statement);
+                
+                $result = yield from $stmt->execute();
+                $this->assertTrue($result instanceof ResultSet);
+                $this->assertEquals(-1, $result->rowCount());
+                
+                try {
+                    $rows = yield from $result->fetchRowsArray();
+                    $this->assertCount(4, $rows);
+                    $this->assertEquals([
+                        'MySQL',
+                        'KoolKode',
+                        'Git',
+                        'Async'
+                    ], array_column($rows, 'name'));
+                } finally {
+                    yield from $result->close();
+                }
                 
                 $stmt = yield from $conn->prepare("UPDATE customer SET name = ? WHERE name = ?");
                 $stmt->bindValue(0, 'GitHub');

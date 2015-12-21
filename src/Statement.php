@@ -113,7 +113,7 @@ class Statement
             
             $this->client->flush();
 
-            return new ResultSet($this->conn, [], $affected);
+            return new ResultSet($this->conn, $this->id, [], $affected);
         }
         
         $columns = [];
@@ -127,6 +127,6 @@ class Statement
             $this->conn->assert(ord(yield from $this->client->readNextPacket()) === 0xFE, 'Missing EOF after column definitions');
         }
         
-        return new ResultSet($this->conn, $columns, -1);
+        return new ResultSet($this->conn, $this->id, $columns, -1);
     }
 }
