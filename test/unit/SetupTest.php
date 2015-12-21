@@ -70,8 +70,6 @@ class SetupTest extends \PHPUnit_Framework_TestCase
 //             $conn = yield from Connection::connect($this->getEnvParam('DB_DSN'), $this->getEnvParam('DB_USERNAME', ''), $this->getEnvParam('DB_PASSWORD', ''));
             
             try {
-//                 $this->assertTrue(yield from $conn->ping());
-                
                 $stmt = yield from $conn->prepare("SELECT * FROM customer ORDER BY name DESC");
                 $this->assertTrue($stmt instanceof Statement);
                 
@@ -79,18 +77,14 @@ class SetupTest extends \PHPUnit_Framework_TestCase
                 $this->assertTrue($result instanceof ResultSet);
                 $this->assertEquals(-1, $result->rowCount());
                 
-                try {
-                    $rows = yield from $result->fetchRowsArray();
-                    $this->assertCount(4, $rows);
-                    $this->assertEquals([
-                        'MySQL',
-                        'KoolKode',
-                        'Git',
-                        'Async'
-                    ], array_column($rows, 'name'));
-                } finally {
-                    yield from $result->close();
-                }
+                $rows = yield from $result->fetchRowsArray();
+                $this->assertCount(4, $rows);
+                $this->assertEquals([
+                    'MySQL',
+                    'KoolKode',
+                    'Git',
+                    'Async'
+                ], array_column($rows, 'name'));
                 
                 $stmt = yield from $conn->prepare("UPDATE customer SET name = ? WHERE name = ?");
                 $stmt->bindValue(0, 'GitHub');
