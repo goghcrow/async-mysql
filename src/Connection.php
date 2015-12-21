@@ -19,6 +19,8 @@ class Connection implements ConnectionInterface
     
     protected $client;
     
+    protected $pool;
+    
     public function __construct(Client $client)
     {
         $this->client = $client;
@@ -27,6 +29,22 @@ class Connection implements ConnectionInterface
     public function getClient(): Client
     {
         return $this->client;
+    }
+    
+    public function setPool(Pool $pool = NULL)
+    {
+        $this->pool = $pool;
+    }
+    
+    public function releaseStatement(int $id)
+    {
+        if ($this->pool !== NULL) {
+            try {
+                $this->pool->releaseConnection($this);
+            } finally {
+                $this->pool = NULL;
+            }
+        }
     }
     
     public static function connect(string $dsn, string $username, string $password): \Generator

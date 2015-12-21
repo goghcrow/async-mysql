@@ -65,10 +65,12 @@ class SetupTest extends \PHPUnit_Framework_TestCase
         $executor = (new ExecutorFactory())->createExecutor();
         
         $executor->runNewTask(call_user_func(function () {
-            $conn = yield from Connection::connect($this->getEnvParam('DB_DSN'), $this->getEnvParam('DB_USERNAME', ''), $this->getEnvParam('DB_PASSWORD', ''));
+            $conn = new Pool($this->getEnvParam('DB_DSN'), $this->getEnvParam('DB_USERNAME', ''), $this->getEnvParam('DB_PASSWORD', ''));
+            
+//             $conn = yield from Connection::connect($this->getEnvParam('DB_DSN'), $this->getEnvParam('DB_USERNAME', ''), $this->getEnvParam('DB_PASSWORD', ''));
             
             try {
-                $this->assertTrue(yield from $conn->ping());
+//                 $this->assertTrue(yield from $conn->ping());
                 
                 $stmt = yield from $conn->prepare("SELECT * FROM customer ORDER BY name DESC");
                 $this->assertTrue($stmt instanceof Statement);

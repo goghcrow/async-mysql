@@ -44,9 +44,19 @@ class Statement
         $this->params = $params;
     }
     
+    public function __destruct()
+    {
+        $this->conn->releaseStatement($this->id);
+    }
+    
     public function bindValue(int $pos, $val)
     {
         $this->bound[$pos] = $val;
+    }
+    
+    public function free()
+    {
+        $this->conn->releaseStatement($this->id);
     }
     
     public function execute(): \Generator
