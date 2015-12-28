@@ -13,9 +13,9 @@ namespace KoolKode\Async\MySQL;
 
 class ResultSet
 {
-    protected $conn;
+    protected $id;
     
-    protected $client;
+    protected $conn;
     
     protected $names;
     
@@ -27,10 +27,10 @@ class ResultSet
     
     protected $closed = false;
     
-    public function __construct(Connection $conn, array $columns, int $affectedRows)
+    public function __construct(Connection $conn, int $id, array $columns, int $affectedRows)
     {
         $this->conn = $conn;
-        $this->client = $conn->getClient();
+        $this->id = $id;
         $this->columns = $columns;
         $this->columnCount = count($this->columns);
         $this->affectedRows = $affectedRows;
@@ -48,6 +48,11 @@ class ResultSet
         ];
     }
     
+    public function close(): \Generator
+    {
+        while (NULL !== (yield from $this->fetchRow()));
+    }
+    
     public function rowCount(): int
     {
         return $this->affectedRows;
@@ -59,18 +64,19 @@ class ResultSet
             return;
         }
         
-        $packet = yield from $this->client->readNextPacket();
+        $client = $this->conn->getClient();
+        $packet = yield from $client->readNextPacket();
         
-        if (ord($packet) === 0xFE) {
+        if ($packet === '' || ord($packet) === 0xFE) {
             $this->closed = true;
             
-            $this->client->flush();
+            $client->flush();
             
             return;
         }
         
         $off = 0;
-        $this->conn->assert($this->client->readInt8($packet, $off) === 0x00, 'Missing packet header in result row');
+        $this->conn->assert($client->readInt8($packet, $off) === 0x00, 'Missing packet header in result row');
         
         $row = [];
         for ($i = 0; $i < $this->columnCount; $i++) {
@@ -85,7 +91,7 @@ class ResultSet
                 $i++;
             }
             
-            $row[$i] = $this->client->readBinary($this->columns[$i]['type'], $packet, $off);
+            $row[$i] = $client->readBinary($this->columns[$i]['type'], $packet, $off);
         }
         
         return array_combine($this->names, $row);

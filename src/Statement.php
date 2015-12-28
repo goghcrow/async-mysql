@@ -44,9 +44,19 @@ class Statement
         $this->params = $params;
     }
     
+    public function __destruct()
+    {
+        $this->conn->releaseStatement($this->id);
+    }
+    
     public function bindValue(int $pos, $val)
     {
         $this->bound[$pos] = $val;
+    }
+    
+    public function free()
+    {
+        $this->conn->releaseStatement($this->id);
     }
     
     public function execute(): \Generator
@@ -113,7 +123,7 @@ class Statement
             
             $this->client->flush();
 
-            return new ResultSet($this->conn, [], $affected);
+            return new ResultSet($this->conn, $this->id, [], $affected);
         }
         
         $columns = [];
@@ -127,6 +137,6 @@ class Statement
             $this->conn->assert(ord(yield from $this->client->readNextPacket()) === 0xFE, 'Missing EOF after column definitions');
         }
         
-        return new ResultSet($this->conn, $columns, -1);
+        return new ResultSet($this->conn, $this->id, $columns, -1);
     }
 }
