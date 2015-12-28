@@ -3,7 +3,8 @@
 	"description" : "KoolKode Async MySQL Client",
 	"keywords" : [
 		"koolkode",
-		"async"
+		"async",
+		"mysql"
 	],
 	"type" : "library",
 	"license" : "MIT",
