@@ -11,18 +11,12 @@
 
 namespace KoolKode\Async\MySQL;
 
-/**
- * Contract for a MySQL connection.
- * 
- * @author Martin Schröder
- */
-interface ConnectionInterface
+class ConnectionReleasedEvent
 {
-    /**
-     * Prepare the given SQL statement.
-     * 
-     * @param string $sql
-     * @return Statement
-     */
-    public function prepare(string $sql): \Generator;
+    public $conn;
+
+    public function __construct(ConnectionInterface $conn)
+    {
+        $this->conn = $conn;
+    }
 }

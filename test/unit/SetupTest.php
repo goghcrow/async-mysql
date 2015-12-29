@@ -13,6 +13,8 @@ namespace KoolKode\Async\MySQL;
 
 use KoolKode\Async\ExecutorFactory;
 
+use function KoolKode\Async\newEventEmitter;
+
 class SetupTest extends \PHPUnit_Framework_TestCase
 {
     /**
@@ -65,7 +67,7 @@ class SetupTest extends \PHPUnit_Framework_TestCase
         $executor = (new ExecutorFactory())->createExecutor();
         
         $executor->runNewTask(call_user_func(function () {
-            $conn = new Pool($this->getEnvParam('DB_DSN'), $this->getEnvParam('DB_USERNAME', ''), $this->getEnvParam('DB_PASSWORD', ''));
+            $conn = new Pool(yield newEventEmitter(), $this->getEnvParam('DB_DSN'), $this->getEnvParam('DB_USERNAME', ''), $this->getEnvParam('DB_PASSWORD', ''), 10);
             
 //             $conn = yield from Connection::connect($this->getEnvParam('DB_DSN'), $this->getEnvParam('DB_USERNAME', ''), $this->getEnvParam('DB_PASSWORD', ''));
             
