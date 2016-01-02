@@ -58,6 +58,11 @@ class ResultSet
         return $this->affectedRows;
     }
     
+    public function lastInsertId()
+    {
+        return $this->conn->lastInsertId();
+    }
+    
     public function fetchRow(): \Generator
     {
         if ($this->closed) {
