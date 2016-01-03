@@ -99,6 +99,8 @@ class ResultSet
             $row[$i] = $client->readBinary($this->columns[$i]['type'], $packet, $off);
         }
         
+        ksort($row, SORT_NUMERIC);
+        
         return array_combine($this->names, $row);
     }
     
