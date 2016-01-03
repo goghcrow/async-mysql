@@ -70,7 +70,7 @@ class ResultSet
         }
         
         $client = $this->conn->getClient();
-        $packet = yield from $client->readNextPacket();
+        $packet = yield from $client->readNextPacket(false);
         
         if ($packet === '' || ord($packet) === 0xFE) {
             $this->closed = true;

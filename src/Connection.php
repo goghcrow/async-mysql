@@ -135,7 +135,7 @@ class Connection implements ConnectionInterface
         try {
             yield from $this->client->sendCommand($this->client->encodeInt8(0x16) . $sql);
             
-            $packet = yield from $this->client->readNextPacket();
+            $packet = yield from $this->client->readNextPacket(false);
             $off = 0;
             
             $this->assert($this->client->readInt8($packet, $off) === 0x00, 'Status is not OK');

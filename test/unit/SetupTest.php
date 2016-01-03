@@ -117,4 +117,60 @@ class SetupTest extends \PHPUnit_Framework_TestCase
         
         $executor->run();
     }
+    
+    /**
+     * Test is needed in order to verify OK-processing flag in Client::readNextPacket().
+     */
+    public function testMassInserts()
+    {
+        $pdo = new \PDO($this->getEnvParam('DB_DSN'), $this->getEnvParam('DB_USERNAME', NULL), $this->getEnvParam('DB_PASSWORD', NULL));
+        $pdo->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
+        
+        $ddl = file_get_contents(__DIR__ . '/test.sql');
+        
+        foreach (array_map('trim', explode(';', $ddl)) as $cmd) {
+            if ($cmd === '') {
+                continue;
+            }
+            
+            $pdo->exec($cmd);
+        }
+        
+        $executor = (new ExecutorFactory())->createExecutor();
+        
+        $executor->runNewTask(call_user_func(function () {
+            $conn = new Pool(yield eventEmitter(), $this->getEnvParam('DB_DSN'), $this->getEnvParam('DB_USERNAME', ''), $this->getEnvParam('DB_PASSWORD', ''), 2);
+            
+            try {
+                $size = 400;
+                
+                for ($i = 0; $i < $size; $i++) {
+                    $stmt = yield from $conn->prepare("INSERT INTO `customer` (`name`) VALUES (?)");
+                    $this->assertTrue($stmt instanceof Statement);
+                    
+                    try {
+                        $stmt->bindValue(0, bin2hex(random_bytes(16)));
+                        
+                        $result = yield from $stmt->execute();
+                        $this->assertTrue($result instanceof ResultSet);
+                    } finally {
+                        $stmt->free();
+                    }
+                }
+                
+                $stmt = yield from $conn->prepare("SELECT * FROM `customer` ORDER BY `id`");
+                
+                $result = yield from $stmt->execute();
+                $this->assertTrue($result instanceof ResultSet);
+                $this->assertEquals(-1, $result->rowCount());
+                
+                $values = yield from $result->fetchColumnArray('name');
+                $this->assertCount($size, $values);
+            } finally {
+                yield from $conn->close();
+            }
+        }));
+        
+        $executor->run();
+    }
 }

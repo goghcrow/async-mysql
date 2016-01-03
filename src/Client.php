@@ -309,7 +309,7 @@ class Client
         }
     }
     
-    public function readNextPacket(): \Generator
+    public function readNextPacket(bool $processOK = true): \Generator
     {
         if (!$this->connected) {
             throw new ConnectionException('Cannot read packges when connection has not been established');
@@ -320,7 +320,7 @@ class Client
     
         $len = $this->readInt24($header, $off);
         $this->sequence = $this->readInt8($header, $off);
-    
+        
         if ($len > 0) {
             $payload = yield readBuffer($this->stream, $len);
         } else {
@@ -330,15 +330,17 @@ class Client
         switch (ord($payload)) {
             case 0x00:
             case 0xFE:
-                $off = 1;
-                $this->readLengthEncodedInt($payload, $off);
-                
-                $this->lastInsertId = $this->readLengthEncodedInt($payload, $off) ?: NULL;
+                if ($processOK) {
+                    $off = 1;               
+                    $this->readLengthEncodedInt($payload, $off);
+                    
+                    $this->lastInsertId = $this->readLengthEncodedInt($payload, $off) ?  : NULL;
+                }
                 break;
             case 0xFF:
                 $off = 1;
                 $code = $this->readInt16($payload, $off);
-    
+                
                 if ($this->capabilities & self::CLIENT_PROTOCOL_41) {
                     // Marker...
                     $this->readFixedLengthString($payload, 1, $off);
@@ -392,7 +394,7 @@ class Client
             throw new ConnectionException('Cannot send additional package when the connection is not processing a command');
         }
         
-        $packet = $this->encodeInt24(strlen($packet)) . chr(++$this->sequence) . $packet;
+        $packet = $this->encodeInt24(strlen($packet)) . chr(++$this->sequence % 256) . $packet;
         
         return yield from $this->stream->write($packet);
     }
@@ -404,7 +406,7 @@ class Client
         return $hash ^ sha1(substr($scramble, 0, 20) . sha1($hash, true), true);
     }
     
-    public function readLengthEncodedInt(string $data, int & $off = 0): int
+    public function readLengthEncodedInt(string $data, int & $off = 0)
     {
         $int = ord(substr($data, $off));
         $off++;
@@ -479,35 +481,35 @@ class Client
         }
     }
     
-    public function readInt64(string $data, int & $off = 0): int
+    public function readInt64(string $data, int & $off = 0): float
     {
         try {
             if (PHP_INT_MAX >> 31) {
-                $int = unpack('V2', substr($data, $off));
+                $int = unpack('Va/Vb', substr($data, $off));
     
-                return $int[1] + ($int[2] << 32);
+                return $int['a'] + ($int['b'] << 32);
             }
     
-            $int = unpack('v2V', substr($data, $off));
-    
-            return $int[1] + ($int[2] * (1 << 16)) + $int[3] * (1 << 16) * (1 << 16);
+            $int = unpack('va/vb/Vc', substr($data, $off));
+            
+            return $int['a'] + ($int['b'] * (1 << 16)) + $int['c'] * (1 << 16) * (1 << 16);
         } finally {
             $off += 8;
         }
     }
     
-    public function readUnsigned64(string $data, int & $off = 0): int
+    public function readUnsigned64(string $data, int & $off = 0): float
     {
         try {
             if (PHP_INT_MAX >> 31) {
-                $int = unpack('V2', substr($data, $off));
+                $int = unpack('Va/Vb', substr($data, $off));
     
-                return $int[1] + $int[2] * (1 << 32);
+                return $int['a'] + $int['b'] * (1 << 32);
             }
     
-            $int = unpack('v4', substr($data, $off));
+            $int = unpack('va/vb/vc/vd', substr($data, $off));
     
-            return $int[1] + ($int[2] * (1 << 16)) + ($int[3] + ($int[4] * (1 << 16))) * (1 << 16) * (1 << 16);
+            return $int['a'] + ($int['b'] * (1 << 16)) + ($int['c'] + ($int['d'] * (1 << 16))) * (1 << 16) * (1 << 16);
         } finally {
             $off += 8;
         }
