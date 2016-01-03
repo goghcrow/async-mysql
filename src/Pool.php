@@ -44,6 +44,7 @@ class Pool implements ConnectionInterface
     {
         return [
             'dsn' => $this->dsn,
+            'size' => $this->size,
             'connections' => count($this->conns),
             'available' => count($this->available)
         ];
@@ -74,7 +75,19 @@ class Pool implements ConnectionInterface
     protected function aquireConnection(): \Generator
     {
         if (empty($this->available) && count($this->conns) < $this->size) {
-            $conn = $this->conns[] = yield from Connection::connect($this->dsn, $this->username, $this->password);
+            for ($id = 0; $id < $this->size; $id++) {
+                if (!array_key_exists($id, $this->conns)) {
+                    break;
+                }
+            }
+            
+            $this->conns[$id] = NULL;
+            
+            try {
+                $conn = $this->conns[$id] = yield from Connection::connect($this->dsn, $this->username, $this->password);
+            } catch (\Throwable $e) {
+                unset($this->conns[$id]);
+            }
         } else {
             while (empty($this->available)) {
                 yield from $this->events->await(ConnectionReleasedEvent::class);
