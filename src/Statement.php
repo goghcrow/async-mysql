@@ -35,6 +35,8 @@ class Statement
     
     protected $processing = true;
     
+    protected $closed = false;
+    
     public function __construct(Connection $conn, int $id, array $columns, array $params)
     {
         $this->conn = $conn;
@@ -46,7 +48,7 @@ class Statement
     
     public function __destruct()
     {
-        $this->conn->releaseStatement($this->id);
+        $this->free();
     }
     
     public function bindValue(int $pos, $val)
@@ -56,7 +58,10 @@ class Statement
     
     public function free()
     {
-        $this->conn->releaseStatement($this->id);
+        if (!$this->closed) {
+            $this->closed = true;
+            $this->conn->releaseStatement($this->id);
+        }
     }
     
     public function execute(): \Generator
