@@ -66,10 +66,8 @@ class SetupTest extends \PHPUnit_Framework_TestCase
         
         $executor = (new ExecutorFactory())->createExecutor();
         
-        $executor->runNewTask(call_user_func(function () {
-            $conn = new Pool(yield eventEmitter(), $this->getEnvParam('DB_DSN'), $this->getEnvParam('DB_USERNAME', ''), $this->getEnvParam('DB_PASSWORD', ''), 10);
-            
-//             $conn = yield from Connection::connect($this->getEnvParam('DB_DSN'), $this->getEnvParam('DB_USERNAME', ''), $this->getEnvParam('DB_PASSWORD', ''));
+        $executor->runCallback(function () {
+            $conn = yield from Connection::connect($this->getEnvParam('DB_DSN'), $this->getEnvParam('DB_USERNAME', ''), $this->getEnvParam('DB_PASSWORD', ''));
             
             try {
                 $stmt = yield from $conn->prepare("SELECT * FROM customer ORDER BY name DESC");
@@ -113,7 +111,7 @@ class SetupTest extends \PHPUnit_Framework_TestCase
             } finally {
                 yield from $conn->close();
             }
-        }));
+        });
         
         $executor->run();
     }
@@ -138,7 +136,7 @@ class SetupTest extends \PHPUnit_Framework_TestCase
         
         $executor = (new ExecutorFactory())->createExecutor();
         
-        $executor->runNewTask(call_user_func(function () {
+        $executor->runCallback(function () {
             $conn = new Pool(yield eventEmitter(), $this->getEnvParam('DB_DSN'), $this->getEnvParam('DB_USERNAME', ''), $this->getEnvParam('DB_PASSWORD', ''), 2);
             
             try {
@@ -169,7 +167,7 @@ class SetupTest extends \PHPUnit_Framework_TestCase
             } finally {
                 yield from $conn->close();
             }
-        }));
+        });
         
         $executor->run();
     }
