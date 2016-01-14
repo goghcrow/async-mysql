@@ -13,7 +13,9 @@ namespace KoolKode\Async\MySQL;
 
 use KoolKode\Async\Test\AsyncTrait;
 
+use function KoolKode\Async\awaitAll;
 use function KoolKode\Async\eventEmitter;
+use function KoolKode\Async\runTask;
 
 class SetupTest extends \PHPUnit_Framework_TestCase
 {
@@ -116,7 +118,7 @@ class SetupTest extends \PHPUnit_Framework_TestCase
         
         $executor->run();
     }
-    
+
     /**
      * Test is needed in order to verify OK-processing flag in Client::readNextPacket().
      */
@@ -138,12 +140,10 @@ class SetupTest extends \PHPUnit_Framework_TestCase
         $executor = $this->createExecutor();
         
         $executor->runCallback(function () {
-            $conn = new Pool(yield eventEmitter(), $this->getEnvParam('DB_DSN'), $this->getEnvParam('DB_USERNAME', ''), $this->getEnvParam('DB_PASSWORD', ''), 2);
+            $pool = new Pool(yield eventEmitter(), $this->getEnvParam('DB_DSN'), $this->getEnvParam('DB_USERNAME', ''), $this->getEnvParam('DB_PASSWORD', ''), 32);
             
             try {
-                $size = 400;
-                
-                for ($i = 0; $i < $size; $i++) {
+                $insert = function (ConnectionInterface $conn, int $i): \Generator {
                     $stmt = yield from $conn->prepare("INSERT INTO `customer` (`name`) VALUES (?)");
                     $this->assertTrue($stmt instanceof Statement);
                     
@@ -155,9 +155,18 @@ class SetupTest extends \PHPUnit_Framework_TestCase
                     } finally {
                         $stmt->free();
                     }
+                };
+                
+                $size = 400;
+                $tasks = [];
+                
+                for ($i = 0; $i < $size; $i++) {
+                    $tasks[] = yield runTask($insert($pool, $i));
                 }
                 
-                $stmt = yield from $conn->prepare("SELECT * FROM `customer` ORDER BY `id`");
+                yield awaitAll($tasks);
+                
+                $stmt = yield from $pool->prepare("SELECT * FROM `customer` ORDER BY `id`");
                 
                 $result = yield from $stmt->execute();
                 $this->assertTrue($result instanceof ResultSet);
@@ -166,7 +175,7 @@ class SetupTest extends \PHPUnit_Framework_TestCase
                 $values = yield from $result->fetchColumnArray('name');
                 $this->assertCount($size, $values);
             } finally {
-                yield from $conn->close();
+                yield from $pool->close();
             }
         });
         
