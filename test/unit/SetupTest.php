@@ -11,12 +11,13 @@
 
 namespace KoolKode\Async\MySQL;
 
-use KoolKode\Async\ExecutorFactory;
+use KoolKode\Async\Test\AsyncTrait;
 
 use function KoolKode\Async\eventEmitter;
 
 class SetupTest extends \PHPUnit_Framework_TestCase
 {
+    use AsyncTrait;
     /**
      * Get an ENV param.
      *
@@ -64,7 +65,7 @@ class SetupTest extends \PHPUnit_Framework_TestCase
         
         $pdo->exec("INSERT INTO customer (name) VALUES ('KoolKode'), ('Async'), ('MySQL'), ('Git')");
         
-        $executor = (new ExecutorFactory())->createExecutor();
+        $executor = $this->createExecutor();
         
         $executor->runCallback(function () {
             $conn = yield from Connection::connect($this->getEnvParam('DB_DSN'), $this->getEnvParam('DB_USERNAME', ''), $this->getEnvParam('DB_PASSWORD', ''));
@@ -134,7 +135,7 @@ class SetupTest extends \PHPUnit_Framework_TestCase
             $pdo->exec($cmd);
         }
         
-        $executor = (new ExecutorFactory())->createExecutor();
+        $executor = $this->createExecutor();
         
         $executor->runCallback(function () {
             $conn = new Pool(yield eventEmitter(), $this->getEnvParam('DB_DSN'), $this->getEnvParam('DB_USERNAME', ''), $this->getEnvParam('DB_PASSWORD', ''), 2);
