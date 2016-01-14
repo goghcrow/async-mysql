@@ -12,12 +12,17 @@ matrix:
   include:
     - php: 7.0
     - php: 7.0
-      env: 'DEPS=--prefer-lowest'
+      env: DEPS=--prefer-lowest
+    - php: 7.0
+      env: LOOP=ev
+  allow_failures:
+    - env: LOOP=ev
 
 before_install:
-  - 'composer selfupdate --no-interaction'
+  - composer selfupdate --no-interaction
 
 install:
+  - if [[ "$LOOP" == "ev" ]]; then yes '' | pecl install ev-beta; fi
   - >
     mysql -e "CREATE DATABASE atest;" -uroot;
     export DB_DSN="mysql:host=localhost;dbname=atest";
@@ -26,7 +31,8 @@ install:
   - composer info -i
 
 script:
-  - './vendor/bin/phpunit -c "./test/phpunit.xml"'
+  - ./vendor/bin/phpunit -c "./test/phpunit.xml"
 
 notifications:
   email: false
+
