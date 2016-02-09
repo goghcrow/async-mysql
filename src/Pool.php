@@ -13,8 +13,6 @@ namespace KoolKode\Async\MySQL;
 
 use KoolKode\Async\Event\EventEmitter;
 
-use function KoolKode\Async\noop;
-
 class Pool implements ConnectionInterface
 {
     protected $dsn;
@@ -52,7 +50,7 @@ class Pool implements ConnectionInterface
     
     public function close(): \Generator
     {
-        yield noop();
+        yield;
     }
     
     public function releaseConnection(Connection $conn)
@@ -64,12 +62,18 @@ class Pool implements ConnectionInterface
     
     public function prepare(string $sql): \Generator
     {
-        return yield from (yield from $this->aquireConnection())->prepare($sql);
+        $conn = yield from $this->aquireConnection();
+        $stmt = yield from $conn->prepare($sql);
+        
+        return $stmt;
     }
     
     public function getClient(): \Generator
     {
-        return yield from (yield from $this->aquireConnection())->getClient();
+        $conn = yield from $this->aquireConnection();
+        $client = yield from $conn->getClient();
+        
+        return $client;
     }
     
     protected function aquireConnection(): \Generator
