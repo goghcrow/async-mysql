@@ -12,8 +12,7 @@
 namespace KoolKode\Async\MySQL;
 
 use KoolKode\Async\Stream\DuplexStreamInterface;
-
-use function KoolKode\Async\readBuffer;
+use KoolKode\Async\Stream\Stream;
 
 class Client
 {
@@ -366,7 +365,7 @@ class Client
     
     public function readWithLength(int $length): \Generator
     {
-        $chunk = yield readBuffer($this->stream, $length);
+        $chunk = yield from Stream::readBuffer($this->stream, $length);
         
         if (strlen($chunk) !== $length) {
             throw new ConnectionException(sprintf('Only %u bytes read but %u bytes were requested', strlen($chunk), $length));

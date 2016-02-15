@@ -91,6 +91,8 @@ class Pool implements ConnectionInterface
                 $conn = $this->conns[$id] = yield from Connection::connect($this->dsn, $this->username, $this->password);
             } catch (\Throwable $e) {
                 unset($this->conns[$id]);
+                
+                throw $e;
             }
         } else {
             while (empty($this->available)) {

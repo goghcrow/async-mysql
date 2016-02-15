@@ -14,11 +14,12 @@
 			"email" : "m.schroeder2007@gmail.com"
 		}
 	],
-	"minimum-stability" : "stable",
+	"minimum-stability" : "dev",
 	"require" : {
 		"php" : "~7.0",
 		"psr/log" : "~1.0",
-		"koolkode/async" : "@dev"
+		"koolkode/async" : "@dev",
+		"koolkode/async-stream" : "@dev"
 	},
 	"require-dev" : {
 		"phpunit/phpunit" : "~5.2"
