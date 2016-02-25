@@ -11,7 +11,9 @@
 
 namespace KoolKode\Async\MySQL;
 
-class ConnectionReleasedEvent
+use KoolKode\Async\Event\Event;
+
+class ConnectionReleasedEvent extends Event
 {
     public $conn;
 
