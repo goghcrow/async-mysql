@@ -13,6 +13,7 @@ namespace KoolKode\Async\MySQL;
 
 use KoolKode\Async\Stream\DuplexStreamInterface;
 use KoolKode\Async\Stream\Stream;
+use KoolKode\Async\Stream\StreamException;
 
 class Client
 {
@@ -314,14 +315,23 @@ class Client
             throw new ConnectionException('Cannot read packges when connection has not been established');
         }
         
-        $header = yield from $this->readWithLength(4);
+        try {
+            $header = yield from Stream::readBuffer($this->stream, 4, true);
+        } catch (StreamException $e) {
+            throw new ConnectionException('Failed to read next packet header', 0, $e);
+        }
+        
         $off = 0;
         
         $len = $this->readInt24($header, $off);
         $this->sequence = $this->readInt8($header, $off);
         
         if ($len > 0) {
-            $payload = yield from $this->readWithLength($len);
+            try {
+                $payload = yield from Stream::readBuffer($this->stream, $len, true);
+            } catch (StreamException $e) {
+                throw new ConnectionException('Failed to read payload of packet', 0, $e);
+            }
         } else {
             $payload = '';
         }
@@ -361,17 +371,6 @@ class Client
         }
     
         return $payload;
-    }
-    
-    public function readWithLength(int $length): \Generator
-    {
-        $chunk = yield from Stream::readBuffer($this->stream, $length);
-        
-        if (strlen($chunk) !== $length) {
-            throw new ConnectionException(sprintf('Only %u bytes read but %u bytes were requested', strlen($chunk), $length));
-        }
-        
-        return $chunk;
     }
     
     public function canSendCommand(): bool
