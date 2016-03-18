@@ -11,6 +11,8 @@
 
 namespace KoolKode\Async\MySQL;
 
+use Psr\Log\LoggerInterface;
+
 class Statement
 {
     const CURSOR_TYPE_NO_CURSOR = 0x00;
@@ -37,13 +39,16 @@ class Statement
     
     protected $closed = false;
     
-    public function __construct(Connection $conn, int $id, array $columns, array $params)
+    protected $logger;
+    
+    public function __construct(Connection $conn, int $id, array $columns, array $params, LoggerInterface $logger = NULL)
     {
         $this->conn = $conn;
         $this->client = $conn->getClient();
         $this->id = $id;
         $this->columns = $columns;
         $this->params = $params;
+        $this->logger = $logger;
     }
     
     public function __destruct()

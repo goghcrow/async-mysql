@@ -139,8 +139,8 @@ class SetupTest extends \PHPUnit_Framework_TestCase
         
         $executor = $this->createExecutor();
         
-        $executor->runCallback(function () {
-            $pool = new Pool(yield eventEmitter(), $this->getEnvParam('DB_DSN'), $this->getEnvParam('DB_USERNAME', ''), $this->getEnvParam('DB_PASSWORD', ''), 32);
+        $executor->runCallback(function () use ($executor) {
+            $pool = new Pool($executor, $this->getEnvParam('DB_DSN'), $this->getEnvParam('DB_USERNAME', ''), $this->getEnvParam('DB_PASSWORD', ''), 32);
             
             try {
                 $insert = function (ConnectionInterface $conn, int $i): \Generator {

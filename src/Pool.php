@@ -12,6 +12,8 @@
 namespace KoolKode\Async\MySQL;
 
 use KoolKode\Async\Event\EventEmitter;
+use KoolKode\Async\ExecutorInterface;
+use Psr\Log\LoggerInterface;
 
 class Pool implements ConnectionInterface
 {
@@ -29,13 +31,16 @@ class Pool implements ConnectionInterface
     
     protected $available = [];
     
-    public function __construct(EventEmitter $events, string $dsn, string $username, string $password, int $size = 1)
+    protected $logger;
+    
+    public function __construct(ExecutorInterface $executor, string $dsn, string $username, string $password, int $size = 20, LoggerInterface $logger = NULL)
     {
-        $this->events = $events;
+        $this->events = new EventEmitter($executor);
         $this->dsn = $dsn;
         $this->username = $username;
         $this->password = $password;
         $this->size = $size;
+        $this->logger = $logger;
     }
     
     public function __debugInfo(): array
@@ -56,8 +61,11 @@ class Pool implements ConnectionInterface
     public function releaseConnection(Connection $conn)
     {
         $this->available[] = $conn;
-        
         $this->events->emit(new ConnectionReleasedEvent($conn));
+        
+        if ($this->logger) {
+            $this->logger->debug('Pooled MySQL connection released');
+        }
     }
     
     public function prepare(string $sql): \Generator
@@ -88,11 +96,15 @@ class Pool implements ConnectionInterface
             $this->conns[$id] = NULL;
             
             try {
-                $conn = $this->conns[$id] = yield from Connection::connect($this->dsn, $this->username, $this->password);
+                $conn = $this->conns[$id] = yield from Connection::connect($this->dsn, $this->username, $this->password, $this->logger);
             } catch (\Throwable $e) {
                 unset($this->conns[$id]);
                 
                 throw $e;
+            }
+            
+            if ($this->logger) {
+                $this->logger->debug('Established pooled MySQL connection');
             }
         } else {
             while (empty($this->available)) {

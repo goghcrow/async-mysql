@@ -14,6 +14,7 @@ namespace KoolKode\Async\MySQL;
 use KoolKode\Async\Stream\DuplexStreamInterface;
 use KoolKode\Async\Stream\Stream;
 use KoolKode\Async\Stream\StreamException;
+use Psr\Log\LoggerInterface;
 
 class Client
 {
@@ -179,9 +180,12 @@ class Client
     
     protected $info = [];
     
-    public function __construct(DuplexStreamInterface $stream)
+    protected $logger;
+    
+    public function __construct(DuplexStreamInterface $stream, LoggerInterface $logger = NULL)
     {
         $this->stream = $stream;
+        $this->logger = $logger;
         
         $this->capabilities |= self::CLIENT_SESSION_TRACK;
         $this->capabilities |= self::CLIENT_TRANSACTIONS;

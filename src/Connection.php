@@ -12,6 +12,7 @@
 namespace KoolKode\Async\MySQL;
 
 use KoolKode\Async\Stream\SocketStream;
+use Psr\Log\LoggerInterface;
 
 class Connection implements ConnectionInterface
 {
@@ -21,9 +22,12 @@ class Connection implements ConnectionInterface
     
     protected $pool;
     
-    public function __construct(Client $client)
+    protected $logger;
+    
+    public function __construct(Client $client, LoggerInterface $logger = NULL)
     {
         $this->client = $client;
+        $this->logger = $logger;
     }
     
     public function getClient(): Client
@@ -47,7 +51,7 @@ class Connection implements ConnectionInterface
         }
     }
     
-    public static function connect(string $dsn, string $username, string $password): \Generator
+    public static function connect(string $dsn, string $username, string $password, LoggerInterface $logger = NULL): \Generator
     {
         if ('mysql:' !== substr($dsn, 0, 6)) {
             throw new \InvalidArgumentException(sprintf('Invalid MySQL DSN: "%s"', $dsn));
@@ -78,11 +82,11 @@ class Connection implements ConnectionInterface
         $host = $settings['host'];
         $port = $settings['port'] ?? self::DEFAULT_PORT;
         
-        $client = new Client(yield from SocketStream::connect($host, $port));
+        $client = new Client(yield from SocketStream::connect($host, $port), $logger);
 
         yield from $client->handleHandshake($username, $password);
         
-        $conn = new static($client);
+        $conn = new static($client, $logger);
         
         if (!empty($settings['dbname'])) {
             yield from $conn->changeDefaultSchema($settings['dbname']);
@@ -171,7 +175,13 @@ class Connection implements ConnectionInterface
                 $this->assert(0xFE === ord(yield from $this->client->readNextPacket()), 'Missing EOF packet after column definitions');
             }
             
-            return new Statement($this, $id, $cols, $params);
+            if ($this->logger) {
+                $this->logger->debug('Prepared SQL statement: {sql}', [
+                    'sql' => trim(preg_replace("'\s+'", ' ', $sql))
+                ]);
+            }
+            
+            return new Statement($this, $id, $cols, $params, $this->logger);
         } finally {
             $this->client->flush();
         }
