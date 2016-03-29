@@ -11,7 +11,7 @@
 
 namespace KoolKode\Async\MySQL;
 
-use KoolKode\Async\Stream\SocketStream;
+use KoolKode\Async\Socket\SocketStream;
 use Psr\Log\LoggerInterface;
 
 class Connection implements ConnectionInterface
