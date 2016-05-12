@@ -13,6 +13,7 @@ namespace KoolKode\Async\MySQL;
 
 use KoolKode\Async\Socket\SocketStream;
 use Psr\Log\LoggerInterface;
+use KoolKode\Async\Socket\Socket;
 
 class Connection implements ConnectionInterface
 {
@@ -65,6 +66,7 @@ class Connection implements ConnectionInterface
             switch ($k) {
                 case 'host':
                 case 'dbname':
+                case 'unix_socket':
                     $settings[$k] = $v;
                     break;
                 case 'port':
@@ -75,15 +77,20 @@ class Connection implements ConnectionInterface
             }
         }
         
-        if (empty($settings['host'])) {
-            throw new \InvalidArgumentException('Missing MySQL host in DSN');
+        if (empty($settings['host']) && empty($settings['unix_socket'])) {
+            throw new \InvalidArgumentException('Neighter MySQL host nor Unix domain socket specified in MySQL DSN');
         }
         
-        $host = $settings['host'];
-        $port = $settings['port'] ?? self::DEFAULT_PORT;
+        if (!empty($settings['unix_socket'])) {
+            if (!Socket::isUnixSocketSupported()) {
+                throw new \RuntimeException(sprintf('Cannot connect to MySQL socket "%s", PHP was not compiled with support for Unix domain sockets', $settings['unix_socket']));
+            }
+            
+            $client = new Client(yield from SocketStream::fromUrl('unix://' . $settings['unix_socket']), $logger);
+        } else {
+            $client = new Client(yield from SocketStream::connect($settings['host'], $settings['port'] ?? 3306), $logger);
+        }
         
-        $client = new Client(yield from SocketStream::connect($host, $port), $logger);
-
         yield from $client->handleHandshake($username, $password);
         
         $conn = new static($client, $logger);
