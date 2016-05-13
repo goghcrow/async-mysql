@@ -11,29 +11,41 @@
 
 namespace KoolKode\Async\MySQL;
 
+use KoolKode\Async\Database\ConnectionInterface;
+use KoolKode\Async\Database\StatementInterface;
+use KoolKode\Async\ExecutorInterface;
+use KoolKode\Async\Socket\Socket;
 use KoolKode\Async\Socket\SocketStream;
 use Psr\Log\LoggerInterface;
-use KoolKode\Async\Socket\Socket;
+
+use function KoolKode\Async\await;
+use function KoolKode\Async\currentExecutor;
 
 class Connection implements ConnectionInterface
 {
-    const DEFAULT_PORT = 3306;
-    
     protected $client;
     
     protected $pool;
     
     protected $logger;
     
-    public function __construct(Client $client, LoggerInterface $logger = NULL)
+    protected $pendingTasks;
+    
+    protected $pendingWorker;
+    
+    protected $executor;
+    
+    public function __construct(Client $client, ExecutorInterface $executor, LoggerInterface $logger = NULL)
     {
         $this->client = $client;
+        $this->executor = $executor;
         $this->logger = $logger;
+        $this->pendingTasks = new \SplQueue();
     }
     
-    public function getClient(): Client
+    public function __destruct()
     {
-        return $this->client;
+        $this->shutdown();
     }
     
     public function setPool(Pool $pool = NULL)
@@ -93,7 +105,7 @@ class Connection implements ConnectionInterface
         
         yield from $client->handleHandshake($username, $password);
         
-        $conn = new static($client, $logger);
+        $conn = new static($client, yield currentExecutor(), $logger);
         
         if (!empty($settings['dbname'])) {
             yield from $conn->changeDefaultSchema($settings['dbname']);
@@ -102,20 +114,66 @@ class Connection implements ConnectionInterface
         return $conn;
     }
     
+    /**
+     * {@inheritdoc}
+     */
+    public function shutdown()
+    {
+        if ($this->client !== NULL) {
+            $this->executor->runCallback(function () {
+                try {
+                    yield from $this->awaitPendingTasks();
+                    
+                    try {
+                        if ($this->client->canSendCommand()) {
+                            yield from $this->client->sendCommand($this->client->encodeInt8(0x01));
+                        }
+                    } finally {
+                        $this->client->close();
+                    }
+                } finally {
+                    $this->client = NULL;
+                }
+            });
+        }
+    }
+    
+    public function awaitPendingTasks(): \Generator
+    {
+        if ($this->pendingWorker !== NULL) {
+            yield await($this->pendingWorker);
+        }
+    }
+
+    public function queueWork(callable $work, ...$args)
+    {
+        $this->pendingTasks->enqueue([
+            $work,
+            $args
+        ]);
+        
+        if ($this->pendingWorker === NULL) {
+            $this->pendingWorker = $this->executor->runCallback(function () {
+                try {
+                    while (!$this->pendingTasks->isEmpty()) {
+                        list ($callback, $args) = $this->pendingTasks->dequeue();
+                        
+                        $result = $callback(...$args);
+                        
+                        if ($result instanceof \Generator) {
+                            yield from $result;
+                        }
+                    }
+                } finally {
+                    $this->pendingWorker = NULL;
+                }
+            });
+        }
+    }
+    
     public function lastInsertId()
     {
         return $this->client->getLastInsertId();
-    }
-    
-    public function close(): \Generator
-    {
-        try {
-            if ($this->client->canSendCommand()) {
-                yield from $this->client->sendCommand($this->client->encodeInt8(0x01));
-            }
-        } finally {
-            $this->client->close();
-        }
     }
     
     public function changeDefaultSchema(string $schema): \Generator
@@ -141,57 +199,9 @@ class Connection implements ConnectionInterface
         }
     }
     
-    public function prepare(string $sql): \Generator
+    public function prepare(string $sql): StatementInterface
     {
-        try {
-            yield from $this->client->sendCommand($this->client->encodeInt8(0x16) . $sql);
-            
-            $packet = yield from $this->client->readNextPacket(false);
-            $off = 0;
-            
-            $this->assert($this->client->readInt8($packet, $off) === 0x00, 'Status is not OK');
-            
-            $id = $this->client->readInt32($packet, $off);
-            
-            $cc = $this->client->readInt16($packet, $off);
-            $pc = $this->client->readInt16($packet, $off);
-            
-            $this->assert($this->client->readInt8($packet, $off) === 0x00, 'Missing filler');
-            
-            // Warning count:
-            $this->client->readInt16($packet, $off);
-            
-            $cols = [];
-            $params = [];
-            
-            // Params:
-            for ($i = 0; $i < $pc; $i++) {
-                $params[] = $this->parseColumnDefinition(yield from $this->client->readNextPacket());
-            }
-            
-            if ($pc > 0 && !$this->client->hasCapabilty(Client::CLIENT_DEPRECATE_EOF)) {
-                $this->assert(0xFE === ord(yield from $this->client->readNextPacket()), 'Missing EOF packet after param definitions');
-            }
-            
-            // Columns:
-            for ($i = 0; $i < $cc; $i++) {
-                $cols[] = $this->parseColumnDefinition(yield from $this->client->readNextPacket());
-            }
-            
-            if ($cc > 0 && !$this->client->hasCapabilty(Client::CLIENT_DEPRECATE_EOF)) {
-                $this->assert(0xFE === ord(yield from $this->client->readNextPacket()), 'Missing EOF packet after column definitions');
-            }
-            
-            if ($this->logger) {
-                $this->logger->debug('Prepared SQL statement: {sql}', [
-                    'sql' => trim(preg_replace("'\s+'", ' ', $sql))
-                ]);
-            }
-            
-            return new Statement($this, $id, $cols, $params, $this->logger);
-        } finally {
-            $this->client->flush();
-        }
+        return new Statement($sql, $this, $this->client, $this->logger);
     }
     
     public function assert(bool $condition, string $message)

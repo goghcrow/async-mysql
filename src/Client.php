@@ -9,6 +9,8 @@
  * file that was distributed with this source code.
  */
 
+// TODO: Enhance client using allowed types in readNextPacket() to avoid assert().
+
 namespace KoolKode\Async\MySQL;
 
 use KoolKode\Async\Stream\DuplexStreamInterface;
