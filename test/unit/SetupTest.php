@@ -11,15 +11,15 @@
 
 namespace KoolKode\Async\MySQL;
 
-use KoolKode\Async\Test\AsyncTrait;
+use KoolKode\Async\Util\AsyncTestTrait;
 
 use function KoolKode\Async\awaitAll;
-use function KoolKode\Async\eventEmitter;
 use function KoolKode\Async\runTask;
 
 class SetupTest extends \PHPUnit_Framework_TestCase
 {
-    use AsyncTrait;
+    use AsyncTestTrait;
+    
     /**
      * Get an ENV param.
      *
