@@ -244,7 +244,7 @@ class Client
     
             $this->serverCapabilities = $this->readInt16($packet, $off);
     
-            if (strlen($packet) > $off) {
+            if (\strlen($packet) > $off) {
                 $this->info['charset'] = $this->readInt8($packet, $off);
                 $this->info['statusFlags'] = $this->readInt16($packet, $off);
     
@@ -288,9 +288,9 @@ class Client
             }
     
             if ($this->capabilities & self::CLIENT_PLUGIN_AUTH_LENENC_CLIENT_DATA) {
-                $packet .= $this->encodeInt(strlen($auth)) . $auth;
+                $packet .= $this->encodeInt(\strlen($auth)) . $auth;
             } elseif ($this->capabilities & self::CLIENT_SECURE_CONNECTION) {
-                $packet .= $this->encodeInt8(strlen($auth)) . $auth;
+                $packet .= $this->encodeInt8(\strlen($auth)) . $auth;
             } else {
                 $packet .= $auth . "\0";
             }
@@ -394,7 +394,7 @@ class Client
             throw new ConnectionException('Cannot send command while the connection is busy processing another command');
         }
         
-        $packet = $this->encodeInt24(strlen($packet)) . chr(++$this->sequence) . $packet;
+        $packet = $this->encodeInt24(\strlen($packet)) . chr(++$this->sequence) . $packet;
         
         return yield from $this->stream->write($packet);
     }
@@ -409,7 +409,7 @@ class Client
             throw new ConnectionException('Cannot send additional package when the connection is not processing a command');
         }
         
-        $packet = $this->encodeInt24(strlen($packet)) . chr(++$this->sequence % 256) . $packet;
+        $packet = $this->encodeInt24(\strlen($packet)) . chr(++$this->sequence % 256) . $packet;
         
         return yield from $this->stream->write($packet);
     }
@@ -533,7 +533,7 @@ class Client
     public function readFixedLengthString(string $data, int $len, int & $off = 0): string
     {
         $str = substr($data, $off, $len);
-        $off += strlen($str);
+        $off += \strlen($str);
     
         return $str;
     }
@@ -541,7 +541,7 @@ class Client
     public function readNullString(string $data, int & $off = 0): string
     {
         $str = substr($data, $off, strpos($data, "\0", $off) - 1);
-        $off += strlen($str) + 1;
+        $off += \strlen($str) + 1;
     
         return $str;
     }
@@ -559,7 +559,7 @@ class Client
         }
     
         $str = substr($data, $off, $len);
-        $off += strlen($str);
+        $off += \strlen($str);
     
         return $str;
     }
@@ -653,7 +653,7 @@ class Client
                 break;
             case 'string':
                 $type = self::MYSQL_TYPE_LONG_BLOB;
-                $value = $this->encodeInt(strlen($val)) . $val;
+                $value = $this->encodeInt(\strlen($val)) . $val;
                 break;
             case 'NULL':
                 $type = self::MYSQL_TYPE_NULL;

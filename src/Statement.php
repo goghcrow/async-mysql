@@ -257,7 +257,7 @@ class Statement implements StatementInterface
                 $values = '';
                 
                 // Append NULL-bitmap with all bits set to 0:
-                $nullOffset = strlen($packet);
+                $nullOffset = \strlen($packet);
                 $packet .= str_repeat("\0", (count($this->params) + 7) >> 3);
                 
                 foreach ($this->params as $i => $val) {
@@ -355,7 +355,7 @@ class Statement implements StatementInterface
             }
             $off += ($this->columnCount + 9) >> 3;
             
-            for ($i = 0; $off < strlen($packet); $i++) {
+            for ($i = 0; $off < \strlen($packet); $i++) {
                 while (array_key_exists($i, $row)) {
                     $i++;
                 }
