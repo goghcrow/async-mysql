@@ -108,7 +108,7 @@ class Client
     const MYSQL_TYPE_STRING = 0xFE;
 
     const MYSQL_TYPE_GEOMETRY = 0xFF;
-    
+
     protected $socket;
 
     /**
@@ -117,26 +117,26 @@ class Client
      * @var int
      */
     protected $id;
-    
+
     protected $sequence = -1;
-    
+
     protected $info;
-    
+
     protected $capabilities = 0;
-    
+
     protected $clientCaps = 0;
-    
+
     protected $serverCaps = 0;
-    
+
     protected $statusFlags = 0;
-    
+
     /**
      * Executor being used to queue commands and execute them one by one in the correct order.
      * 
      * @var Executor
      */
     protected $executor;
-    
+
     public function __construct(SocketStream $socket)
     {
         $this->socket = $socket;
@@ -152,7 +152,7 @@ class Client
         $this->clientCaps |= self::CLIENT_PLUGIN_AUTH;
         $this->clientCaps |= self::CLIENT_PLUGIN_AUTH_LENENC_CLIENT_DATA;
     }
-    
+
     public function shutdown(\Throwable $e = null): Awaitable
     {
         if ($e) {
@@ -165,7 +165,7 @@ class Client
             return $this->socket->close();
         });
     }
-    
+
     public function handshake(string $username, string $password): \Generator
     {
         try {
@@ -177,53 +177,51 @@ class Client
             
             $packet = yield from $this->readRawPacket();
             
-            if (\ord($packet[0]) !== 0x00) {
+            if ($packet->readInt8() !== 0x00) {
                 throw new \RuntimeException('Authentication failed');
             }
         } finally {
             $this->sequence = -1;
         }
     }
-    
+
     protected function readAuthChallenge(): \Generator
     {
         $packet = yield from $this->readRawPacket();
-        $len = \strlen($packet);
-        $offset = 0;
         
-        if ($this->readInt8($packet, $offset) !== 0x0A) {
-            throw new \RuntimeException(\sprintf('Unsupported protocol version: "0x%02X"', \ord($packet[0])));
+        if (0x0A !== ($version = $packet->readInt8())) {
+            throw new \RuntimeException(\sprintf('Unsupported protocol version: "0x%02X"', $version));
         }
         
-        $this->info['server'] = $this->readNullString($packet, $offset);
-        $this->id = $this->readInt32($packet, $offset);
+        $this->info['server'] = $packet->readNullString();
+        $this->id = $packet->readInt32();
         
-        $auth = $this->readFixedLengthString($packet, 8, $offset);
-        $this->discardByte($packet, $offset, 0x00);
+        $auth = $packet->readFixedLengthString(8);
+        $packet->discardByte(0x00);
         
-        $this->serverCaps = $this->readInt16($packet, $offset);
+        $this->serverCaps = $packet->readInt16();
         
-        if ($len > $offset) {
-            $this->info['charset'] = $this->readInt8($packet, $offset);
-            $this->statusFlags = $this->readInt16($packet, $offset);
-            $this->serverCaps |= ($this->readInt16($packet, $offset) << 16);
+        if (!$packet->isConsumed()) {
+            $this->info['charset'] = $packet->readInt8();
+            $this->statusFlags = $packet->readInt16();
+            $this->serverCaps |= ($packet->readInt16() << 16);
             
             if ($this->serverCaps & self::CLIENT_PLUGIN_AUTH) {
-                $len2 = $this->readInt8($packet, $offset);
+                $len2 = $packet->readInt8();
             } else {
-                $this->discardByte($packet, $offset, 0x00);
+                $packet->discardByte(0x00);
                 $len2 = 0;
             }
             
             if ($this->serverCaps & self::CLIENT_SECURE_CONNECTION) {
                 for ($i = 0; $i < 10; $i++) {
-                    $this->discardByte($packet, $offset, 0x00);
+                    $packet->discardByte(0x00);
                 }
                 
-                $auth .= $this->readFixedLengthString($packet, \max(13, $len2 - 8), $offset);
+                $auth .= $packet->readFixedLengthString(\max(13, $len2 - 8));
                 
                 if ($this->serverCaps & self::CLIENT_PLUGIN_AUTH) {
-                    $authPlugin = \trim($this->readNullString($packet, $offset));
+                    $authPlugin = \trim($packet->readNullString());
                 }
             }
         }
@@ -233,7 +231,7 @@ class Client
             $authPlugin ?? ''
         ];
     }
-    
+
     protected function createAuthPacket(string $username, string $password, string $auth, string $authPlugin): string
     {
         $this->capabilities = $this->clientCaps & $this->serverCaps;
@@ -272,45 +270,45 @@ class Client
         
         return $hash ^ \sha1(\substr($scramble, 0, 20) . \sha1($hash, true), true);
     }
-    
+
     public function isEofDeprecated(): bool
     {
         return ($this->capabilities & self::CLIENT_DEPRECATE_EOF) !== 0;
     }
-    
-    public function read(int $len): \Generator
-    {
-        return yield $this->socket->read($len);
-    }
-    
-    public function readRawPacket(): \Generator
+
+    public function readRawPacket(bool $object = true): \Generator
     {
         $header = yield $this->socket->readBuffer(4, true);
-        $offset = 0;
         
-        $len = $this->readInt24($header, $offset);
-        $this->sequence = $this->readInt8($header, $offset);
+        $len = \unpack('V', \substr($header, 0, 3) . "\x00")[1];
+        $this->sequence = \ord($header[3]);
+        
+        if ($object) {
+            return new Packet($len ? yield $this->socket->readBuffer($len, true) : '');
+        }
         
         return $len ? yield $this->socket->readBuffer($len, true) : '';
     }
 
     public function readPacket(int ...$expected): \Generator
     {
-        $packet = yield from $this->readRawPacket();
-        $type = \ord($packet[0]);
+        $header = yield $this->socket->readBuffer(4, true);
         
-        if ($expected && !\in_array($type, $expected, true)) {
+        $len = \unpack('V', \substr($header, 0, 3) . "\x00")[1];
+        $this->sequence = \ord($header[3]);
+        
+        $payload = $len ? yield $this->socket->readBuffer($len, true) : '';
+        $packet = new Packet(\substr($payload, 1), \ord($payload[0]));
+        
+        if ($expected && !\in_array($packet->type, $expected, true)) {
             $expected = \implode(', ', \array_map(function (int $type) {
                 return \sprintf('0x%02X', $type);
             }, $expected));
             
-            throw new \RuntimeException(\sprintf('Received 0x%02X packet, expecting one of %s', $type, $expected));
+            throw new \RuntimeException(\sprintf('Received 0x%02X packet, expecting one of %s', $packet->type, $expected));
         }
         
-        return [
-            $type,
-            \substr($packet, 1)
-        ];
+        return $packet;
     }
 
     public function sendCommand(callable $callback): Awaitable
@@ -329,7 +327,7 @@ class Client
             }
         });
     }
-    
+
     public function sendPacket(string $packet): \Generator
     {
         $packet = $this->encodeInt24(\strlen($packet)) . \chr(++$this->sequence % 256) . $packet;
@@ -337,211 +335,6 @@ class Client
         return yield $this->socket->write($packet);
     }
 
-    public function discardByte(string $data, int & $offset, int $expected = null)
-    {
-        if ($expected !== null) {
-            if (\ord($data[$offset]) !== $expected) {
-                throw new \RuntimeException(\sprintf('Expected byte 0x%02X, received 0x%02X', $expected, \ord($data[$offset - 1])));
-            }
-        }
-        
-        $offset++;
-    }
-
-    public function readInt8(string $data, int & $offset): int
-    {
-        try {
-            return \ord(\substr($data, $offset, 1));
-        } finally {
-            $offset += 1;
-        }
-    }
-
-    public function readInt16(string $data, int & $offset): int
-    {
-        try {
-            return \unpack('v', \substr($data, $offset, 2))[1];
-        } finally {
-            $offset += 2;
-        }
-    }
-
-    public function readInt24(string $data, int & $offset): int
-    {
-        try {
-            return \unpack('V', \substr($data, $offset, 3) . "\x00")[1];
-        } finally {
-            $offset += 3;
-        }
-    }
-
-    public function readInt32(string $data, int & $offset): int
-    {
-        try {
-            return \unpack('V', \substr($data, $offset, 4))[1];
-        } finally {
-            $offset += 4;
-        }
-    }
-
-    public function readInt64(string $data, int & $offset = 0)
-    {
-        try {
-            if (\PHP_INT_MAX >> 31) {
-                $int = \unpack('Va/Vb', \substr($data, $offset));
-                
-                return $int['a'] + ($int['b'] << 32);
-            }
-            
-            $int = \unpack('va/vb/Vc', \substr($data, $offset));
-            
-            return $int['a'] + ($int['b'] * (1 << 16)) + $int['c'] * (1 << 16) * (1 << 16);
-        } finally {
-            $offset += 8;
-        }
-    }
-
-    public function readUnsigned32(string $data, int & $offset = 0): int
-    {
-        try {
-            if (\PHP_INT_MAX >> 31) {
-                return \unpack('V', \substr($data, $offset))[1];
-            }
-            
-            $int = \unpack('v', \substr($data, $offset));
-            
-            return $int[1] + ($int[2] * (1 << 16));
-        } finally {
-            $offset += 4;
-        }
-    }
-
-    public function readUnsigned64(string $data, int & $offset = 0)
-    {
-        try {
-            if (\PHP_INT_MAX >> 31) {
-                $int = \unpack('Va/Vb', \substr($data, $offset));
-                
-                return $int['a'] + $int['b'] * (1 << 32);
-            }
-            
-            $int = \unpack('va/vb/vc/vd', \substr($data, $offset));
-            
-            return $int['a'] + ($int['b'] * (1 << 16)) + ($int['c'] + ($int['d'] * (1 << 16))) * (1 << 16) * (1 << 16);
-        } finally {
-            $offset += 8;
-        }
-    }
-
-    public function readLengthEncodedInt(string $data, int & $offset)
-    {
-        $int = \ord(\substr($data, $offset, 1));
-        $offset++;
-        
-        if ($int <= 0xFB) {
-            return $int;
-        }
-        
-        switch ($int) {
-            case 0xFC:
-                return $this->readInt16($data, $offset);
-            case 0xFD:
-                return $this->readInt24($data, $offset);
-            case 0xFE:
-                return $this->readInt64($data, $offset);
-        }
-        
-        throw new \RuntimeException("$int is not in ranges [0x00, 0xFA] or [0xFC, 0xFE]");
-    }
-
-    public function readFixedLengthString(string $data, int $len, int & $offset): string
-    {
-        $str = \substr($data, $offset, $len);
-        $offset += \strlen($str);
-        
-        return $str;
-    }
-
-    public function readNullString(string $data, int & $offset): string
-    {
-        $str = \substr($data, $offset, \strpos($data, "\0", $offset) - 1);
-        $offset += \strlen($str) + 1;
-        
-        return $str;
-    }
-
-    public function readLengthEncodedString(string $data, int & $offset)
-    {
-        $len = $this->readLengthEncodedInt($data, $offset);
-        
-        if ($len < 1) {
-            return '';
-        }
-        
-        if ($len === 0xFB) {
-            return null;
-        }
-        
-        $str = \substr($data, $offset, $len);
-        $offset += \strlen($str);
-        
-        return $str;
-    }
-    
-    public function readBinary(int $type, string $data, int & $offset)
-    {
-        // TODO: Implement more data types...
-        $unsigned = $type & 0x80;
-        
-        switch ($type) {
-            case self::MYSQL_TYPE_STRING:
-            case self::MYSQL_TYPE_VARCHAR:
-            case self::MYSQL_TYPE_VAR_STRING:
-            case self::MYSQL_TYPE_ENUM:
-            case self::MYSQL_TYPE_SET:
-            case self::MYSQL_TYPE_LONG_BLOB:
-            case self::MYSQL_TYPE_MEDIUM_BLOB:
-            case self::MYSQL_TYPE_BLOB:
-            case self::MYSQL_TYPE_TINY_BLOB:
-            case self::MYSQL_TYPE_GEOMETRY:
-            case self::MYSQL_TYPE_BIT:
-            case self::MYSQL_TYPE_DECIMAL:
-            case self::MYSQL_TYPE_NEWDECIMAL:
-                return $this->readLengthEncodedString($data, $offset);
-            case self::MYSQL_TYPE_LONGLONG:
-            case self::MYSQL_TYPE_LONGLONG | 0x80:
-                return $unsigned && ($data[$offset + 7] & "\x80") ? $this->readUnsigned64($data, $offset) : $this->readInt64($data, $offset);
-            case self::MYSQL_TYPE_LONG:
-            case self::MYSQL_TYPE_LONG | 0x80:
-            case self::MYSQL_TYPE_INT24:
-            case self::MYSQL_TYPE_INT24 | 0x80:
-                $shift = PHP_INT_MAX >> 31 ? 32 : 0;
-                
-                return $unsigned && ($data[$offset + 3] & "\x80") ? $this->readUnsigned32($data, $offset) : (($this->readInt32($data, $offset) << $shift) >> $shift);
-            case self::MYSQL_TYPE_TINY:
-            case self::MYSQL_TYPE_TINY | 0x80:
-                $shift = PHP_INT_MAX >> 31 ? 56 : 24;
-                
-                return $unsigned ? $this->readInt8($data, $offset) : (($this->readInt8($data, $offset) << $shift) >> $shift);
-            case self::MYSQL_TYPE_DOUBLE:
-                try {
-                    return \unpack('d', \substr($data, $offset))[1];
-                } finally {
-                    $offset += 8;
-                }
-            case self::MYSQL_TYPE_FLOAT:
-                try {
-                    return \unpack('f', \substr($data, $offset))[1];
-                } finally {
-                    $offset += 4;
-                }
-            case self::MYSQL_TYPE_NULL:
-                return null;
-            default:
-                throw new \InvalidArgumentException(\sprintf('Unsupported column type: 0x%02X', $type));
-        }
-    }
-    
     public function encodeInt(int $val): string
     {
         if ($val < 0xFB) {
@@ -562,7 +355,7 @@ class Client
         
         throw new \RuntimEexception("Cannot encode integer bigger than 2^64 - 1 (current: $val)");
     }
-    
+
     public function encodeInt8(int $val): string
     {
         return \chr($val);

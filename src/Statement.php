@@ -82,14 +82,14 @@ class Statement
         
         return $this;
     }
-    
+
     public function offset(int $offset): Statement
     {
         $this->offset = $offset;
         
         return $this;
     }
-    
+
     public function execute(): Awaitable
     {
         $coroutine = null;
@@ -121,14 +121,12 @@ class Statement
         return $defer;
     }
 
-    protected function throwError(Client $clinet, string $packet)
+    protected function throwError(Packet $packet)
     {
-        $offset = 0;
-        
-        $code = $client->readInt16($packet, $offset);
-        $marker = $client->readFixedLengthString($packet, 1, $offset);
-        $state = $client->readFixedLengthString($packet, 5, $offset);
-        $message = \substr($packet, $offset);
+        $code = $packet->readInt16();
+        $marker = $packet->readFixedLengthString(1);
+        $state = $packet->readFixedLengthString(5);
+        $message = $packet->readEofString();
         
         throw new \RuntimeException(\sprintf('Failed to prepare SQL query: SQLSTATE [%s]: "%s"', $state, $message), $code);
     }
@@ -139,22 +137,20 @@ class Statement
         
         yield from $client->sendPacket($client->encodeInt8(0x16) . $sql);
         
-        list ($type, $packet) = yield from $client->readPacket(0x00, 0xFF);
+        $packet = yield from $client->readPacket(0x00, 0xFF);
         
-        if ($type === 0xFF) {
-            return $this->throwError($clinet, $packet);
+        if ($packet->type === 0xFF) {
+            return $this->throwError($packet);
         }
         
-        $offset = 0;
-        
-        $this->id = $client->readInt32($packet, $offset);
-        $columnCount = $client->readInt16($packet, $offset);
-        $paramCount = $client->readInt16($packet, $offset);
+        $this->id = $packet->readInt32();
+        $columnCount = $packet->readInt16();
+        $paramCount = $packet->readInt16();
         
         // Discard filler:
-        $client->discardByte($packet, $offset, 0x00);
+        $packet->discardByte(0x00);
         
-        $warningCount = $client->readInt16($packet, $offset);
+        $warningCount = $packet->readInt16();
         
         // TODO: Params...
         
@@ -168,31 +164,29 @@ class Statement
         }
     }
 
-    protected function parseColumnDefinition(Client $client, string $packet): array
+    protected function parseColumnDefinition(Client $client, Packet $packet): array
     {
-        $offset = 0;
-        
         $col = [
-            'catalog' => $client->readLengthEncodedString($packet, $offset),
-            'schema' => $client->readLengthEncodedString($packet, $offset),
-            'tableAlias' => $client->readLengthEncodedString($packet, $offset),
-            'table' => $client->readLengthEncodedString($packet, $offset),
-            'columnAlias' => $client->readLengthEncodedString($packet, $offset),
-            'column' => $client->readLengthEncodedString($packet, $offset)
+            'catalog' => $packet->readLengthEncodedString(),
+            'schema' => $packet->readLengthEncodedString(),
+            'tableAlias' => $packet->readLengthEncodedString(),
+            'table' => $packet->readLengthEncodedString(),
+            'columnAlias' => $packet->readLengthEncodedString(),
+            'column' => $packet->readLengthEncodedString()
         ];
         
-        if (0x0C !== $client->readLengthEncodedInt($packet, $offset)) {
+        if (0x0C !== $packet->readLengthEncodedInt()) {
             throw new \RuntimeException('Invalid length of colum description fields');
         }
         
-        $col['charset'] = $client->readInt16($packet, $offset);
-        $col['length'] = $client->readInt32($packet, $offset);
-        $col['type'] = $client->readInt8($packet, $offset);
-        $col['flags'] = $client->readInt16($packet, $offset);
-        $col['decimals'] = $client->readInt8($packet, $offset);
+        $col['charset'] = $packet->readInt16();
+        $col['length'] = $packet->readInt32();
+        $col['type'] = $packet->readInt8();
+        $col['flags'] = $packet->readInt16();
+        $col['decimals'] = $packet->readInt8();
         
-        $client->discardByte($packet, $offset, 0x00);
-        $client->discardByte($packet, $offset, 0x00);
+        $packet->discardByte(0x00);
+        $packet->discardByte(0x00);
         
         return $col;
     }
@@ -207,24 +201,23 @@ class Statement
         yield from $client->sendPacket($packet);
         
         $packet = yield from $client->readRawPacket();
-        $offset = 0;
         
-        switch (\ord($packet[0])) {
+        switch (\ord($packet->getData()[0])) {
             case 0x00:
             case 0xFE:
-                if (\strlen($packet) < 9) {
-                    $affected = $client->readLengthEncodedInt($packet, $offset);
-                    $insertId = $client->readLengthEncodedInt($packet, $offset);
+                if ($packet->getLength() < 9) {
+                    $affected = $packet->readLengthEncodedInt();
+                    $insertId = $packet->readLengthEncodedInt();
                     
                     return $defer->resolve(new ResultSet($affected, $insertId));
                 }
                 
                 break;
             case 0xFF:
-                return $this->throwError($clinet, $packet);
+                return $this->throwError($packet);
         }
         
-        $columnCount = $client->readLengthEncodedInt($packet, $offset);
+        $columnCount = $packet->readLengthEncodedInt();
         $defs = [];
         
         for ($i = 0; $i < $columnCount; $i++) {
@@ -243,9 +236,9 @@ class Statement
         
         try {
             while (true) {
-                list ($type, $packet) = yield from $client->readPacket(0x00, 0xFE);
+                $packet = yield from $client->readPacket(0x00, 0xFE);
                 
-                switch ($type) {
+                switch ($packet->type) {
                     case 0xFE:
                         break 2;
                 }
@@ -259,25 +252,17 @@ class Statement
         }
     }
 
-    protected function parseRow(Client $client, string $packet, int $columnCount, array $columnNames, array $defs): array
+    protected function parseRow(Client $client, Packet $packet, int $columnCount, array $columnNames, array $defs): array
     {
-        $row = [];
-        $offset = 0;
+        $row = $packet->readNullBitmap($columnCount);
+        $i = 0;
         
-        for ($i = 0; $i < $columnCount; $i++) {
-            if (\ord($packet[$offset + (($i + 2) >> 3)]) & (1 << (($i + 2) % 8))) {
-                $row[$i] = null;
-            }
-        }
-        
-        $offset += ($columnCount + 9) >> 3;
-        
-        for ($i = 0; $offset < \strlen($packet); $i++) {
+        while (!$packet->isConsumed()) {
             while (\array_key_exists($i, $row)) {
                 $i++;
             }
             
-            $row[$i] = $client->readBinary($defs[$i]['type'], $packet, $offset);
+            $row[$i] = $packet->readValue($defs[$i]['type']);
         }
         
         \ksort($row, \SORT_NUMERIC);
