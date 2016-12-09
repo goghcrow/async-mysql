@@ -236,12 +236,12 @@ class Client
     {
         $this->capabilities = $this->clientCaps & $this->serverCaps;
         
-        // Charset 45 = utf8mb4_general_ci
-        $packet = $this->encodeInt32($this->capabilities);
-        $packet .= $this->encodeInt32(1 << 24 - 1);
-        $packet .= $this->encodeInt8(45);
-        $packet .= \str_repeat("\x00", 23);
-        $packet .= $username . "\x00";
+        $builder = new PacketBuilder();
+        $builder->writeInt32($this->capabilities);
+        $builder->writeInt32(1 << 24 - 1);
+        $builder->writeInt8(45 /* Charset 45 = utf8mb4_general_ci */);
+        $builder->write(\str_repeat("\x00", 23));
+        $builder->writeNullString($username);
         
         if ($password === '') {
             $credentials = '';
@@ -250,18 +250,19 @@ class Client
         }
         
         if ($this->capabilities & self::CLIENT_PLUGIN_AUTH_LENENC_CLIENT_DATA) {
-            $packet .= $this->encodeInt(\strlen($credentials)) . $credentials;
+            $builder->writeLengthEncodedString($credentials);
         } elseif ($this->capabilities & self::CLIENT_SECURE_CONNECTION) {
-            $packet .= $this->encodeInt8(\strlen($credentials)) . $credentials;
+            $builder->writeInt8(\strlen($credentials));
+            $builder->write($credentials);
         } else {
-            $packet .= $credentials . "\x00";
+            $builder->writeNullString($credentials);
         }
         
         if ($this->capabilities & self::CLIENT_PLUGIN_AUTH) {
-            $packet .= ($authPlugin ?? '') . "\x00";
+            $builder->writeNullString($authPlugin ?? '');
         }
         
-        return $packet;
+        return $builder->build();
     }
 
     protected function secureAuth(string $password, string $scramble): string
@@ -330,49 +331,8 @@ class Client
 
     public function sendPacket(string $packet): \Generator
     {
-        $packet = $this->encodeInt24(\strlen($packet)) . \chr(++$this->sequence % 256) . $packet;
+        $packet = \substr(\pack('V', \strlen($packet)), 0, 3) . \chr(++$this->sequence % 256) . $packet;
         
         return yield $this->socket->write($packet);
-    }
-
-    public function encodeInt(int $val): string
-    {
-        if ($val < 0xFB) {
-            return \chr($val);
-        }
-        
-        if ($val < (1 << 16)) {
-            return "\xFC" . $this->encodeInt16($val);
-        }
-        
-        if ($val < (1 << 24)) {
-            return "\xFD" . $this->encodeInt24($val);
-        }
-        
-        if ($val < (1 << 62) * 4) {
-            return "\xFE" . $this->encodeInt64($val);
-        }
-        
-        throw new \RuntimEexception("Cannot encode integer bigger than 2^64 - 1 (current: $val)");
-    }
-
-    public function encodeInt8(int $val): string
-    {
-        return \chr($val);
-    }
-
-    public function encodeInt16(int $val): string
-    {
-        return \pack('v', $val);
-    }
-
-    public function encodeInt24(int $val): string
-    {
-        return \substr(\pack('V', $val), 0, 3);
-    }
-
-    public function encodeInt32(int $val): string
-    {
-        return \pack('V', $val);
     }
 }

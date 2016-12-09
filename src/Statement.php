@@ -63,10 +63,11 @@ class Statement
                 $id = $this->id;
                 
                 return $this->client->sendCommand(function (Client $client) use ($id) {
-                    $packet = $client->encodeInt8(0x19);
-                    $packet .= $client->encodeInt32($id);
+                    $builder = new PacketBuilder();
+                    $builder->writeInt8(0x19);
+                    $builder->writeInt32($id);
                     
-                    yield from $client->sendPacket($packet);
+                    yield from $client->sendPacket($builder->build());
                 });
             } finally {
                 $this->id = null;
@@ -135,7 +136,11 @@ class Statement
     {
         $sql = $this->sql;
         
-        yield from $client->sendPacket($client->encodeInt8(0x16) . $sql);
+        $builder = new PacketBuilder();
+        $builder->writeInt8(0x16);
+        $builder->write($sql);
+        
+        yield from $client->sendPacket($builder->build());
         
         $packet = yield from $client->readPacket(0x00, 0xFF);
         
@@ -193,12 +198,13 @@ class Statement
 
     protected function executeQuery(Client $client, Deferred $defer, int $prefetch = 4): \Generator
     {
-        $packet = $client->encodeInt8(0x17);
-        $packet .= $client->encodeInt32($this->id);
-        $packet .= $client->encodeInt8(self::CURSOR_TYPE_NO_CURSOR);
-        $packet .= $client->encodeInt32(1);
+        $builder = new PacketBuilder();
+        $builder->writeInt8(0x17);
+        $builder->writeInt32($this->id);
+        $builder->writeInt8(self::CURSOR_TYPE_NO_CURSOR);
+        $builder->writeInt32(1);
         
-        yield from $client->sendPacket($packet);
+        yield from $client->sendPacket($builder->build());
         
         $packet = yield from $client->readRawPacket();
         

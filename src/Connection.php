@@ -70,7 +70,11 @@ class Connection
                 
                 if (isset($settings['dbname'])) {
                     yield $client->sendCommand(function (Client $client) use ($settings) {
-                        yield from $client->sendPacket($client->encodeInt8(0x02) . $settings['dbname']);
+                        $builder = new PacketBuilder();
+                        $builder->writeInt8(0x02);
+                        $builder->write($settings['dbname']);
+                        
+                        yield from $client->sendPacket($builder->build());
                         yield from $client->readPacket(0x00);
                     });
                 }
@@ -102,9 +106,12 @@ class Connection
     public function ping(): Awaitable
     {
         return $this->client->sendCommand(function (Client $client) {
+            $builder = new PacketBuilder();
+            $builder->writeInt8(0x0E);
+            
             $time = \microtime(true) * 1000;
             
-            yield from $client->sendPacket($client->encodeInt8(0x0E));
+            yield from $client->sendPacket($builder->build());
             yield from $client->readPacket(0x00);
             
             return (int) \ceil((\microtime(true) * 1000 - $time) + .5);
