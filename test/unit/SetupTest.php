@@ -37,7 +37,33 @@ class SetupTest extends AsyncTestCase
         $pdo->exec("INSERT INTO customer (name) VALUES ('KoolKode'), ('Async'), ('MySQL'), ('Git')");
         
         $conn = yield Connection::connect($dsn, $username, $password);
+        $this->assertInstanceOf(Connection::class, $conn);
         
-        print_r($conn);
+        try {
+            $this->assertGreaterThan(0, yield $conn->ping());
+            
+            $stmt = $conn->prepare('SHOW TABLES');
+            $this->assertInstanceOf(Statement::class, $stmt);
+            
+            $result = yield $stmt->execute();
+            $this->assertInstanceOf(ResultSet::class, $result);
+            
+            $rows1 = [];
+            
+            try {
+                while ($row = yield $result->fetch()) {
+                    $rows1[] = $row;
+                }
+            } finally {
+                $result->closeCursor();
+            }
+            
+            $rows2 = yield (yield $stmt->execute())->fetchAll();
+            $stmt = null;
+            
+            $this->assertEquals($rows1, $rows2);
+        } finally {
+            $conn->shutdown();
+        }
     }
 }

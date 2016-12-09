@@ -68,20 +68,11 @@ class Connection
             try {
                 yield from $client->handshake($username, $password);
                 
-                $client->flush();
-                
-                try {
-                    if (isset($settings['dbname'])) {
-                        yield from $client->sendCommand($client->encodeInt8(0x02) . $settings['dbname']);
-                        
-                        $packet = yield from $client->readNextPacket();
-                        
-                        if (\ord($packet[0]) !== 0x00) {
-                            throw new \RuntimeException(\sprintf('Failed to switch default DB to "%s"', $settings['dbname']));
-                        }
-                    }
-                } finally {
-                    $client->flush();
+                if (isset($settings['dbname'])) {
+                    yield $client->sendCommand(function (Client $client) use ($settings) {
+                        yield from $client->sendPacket($client->encodeInt8(0x02) . $settings['dbname']);
+                        yield from $client->readPacket(0x00);
+                    });
                 }
             } catch (\Throwable $e) {
                 $socket->close();
@@ -91,5 +82,43 @@ class Connection
             
             return new Connection($client);
         });
+    }
+    
+    /**
+     * Shut the DB connection down.
+     * 
+     * @param \Throwable $e Optional cause of shutdown.
+     */
+    public function shutdown(\Throwable $e = null): Awaitable
+    {
+        return $this->client->shutdown($e);
+    }
+
+    /**
+     * Ping the DB server.
+     * 
+     * @return int Number of milliseconds needed to send ping packets back and forth.
+     */
+    public function ping(): Awaitable
+    {
+        return $this->client->sendCommand(function (Client $client) {
+            $time = \microtime(true) * 1000;
+            
+            yield from $client->sendPacket($client->encodeInt8(0x0E));
+            yield from $client->readPacket(0x00);
+            
+            return (int) \ceil((\microtime(true) * 1000 - $time) + .5);
+        });
+    }
+    
+    /**
+     * Create a prepared statement from the given SQL.
+     * 
+     * @param string $sql
+     * @return Statement
+     */
+    public function prepare(string $sql): Statement
+    {
+        return new Statement($sql, $this->client);
     }
 }

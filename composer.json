@@ -18,7 +18,7 @@
 	"prefer-stable" : true,
 	"require" : {
 		"php" : "~7.0",
-		"koolkode/async" : "^0.2.7"
+		"koolkode/async" : "dev-master"
 	},
 	"require-dev" : {
 		"phpunit/phpunit" : "~5.7"

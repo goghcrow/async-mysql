@@ -13,7 +13,9 @@ declare(strict_types = 1);
 
 namespace KoolKode\Async\MySQL;
 
+use KoolKode\Async\Awaitable;
 use KoolKode\Async\Socket\SocketStream;
+use KoolKode\Async\Util\Executor;
 
 class Client
 {
@@ -47,6 +49,66 @@ class Client
 
     const CLIENT_DEPRECATE_EOF = 0x01000000;
 
+    const MYSQL_TYPE_DECIMAL = 0x00;
+
+    const MYSQL_TYPE_TINY = 0x01;
+
+    const MYSQL_TYPE_SHORT = 0x02;
+
+    const MYSQL_TYPE_LONG = 0x03;
+
+    const MYSQL_TYPE_FLOAT = 0x04;
+
+    const MYSQL_TYPE_DOUBLE = 0x05;
+
+    const MYSQL_TYPE_NULL = 0x06;
+
+    const MYSQL_TYPE_TIMESTAMP = 0x07;
+
+    const MYSQL_TYPE_LONGLONG = 0x08;
+
+    const MYSQL_TYPE_INT24 = 0x09;
+
+    const MYSQL_TYPE_DATE = 0x0A;
+
+    const MYSQL_TYPE_TIME = 0x0B;
+
+    const MYSQL_TYPE_DATETIME = 0x0C;
+
+    const MYSQL_TYPE_YEAR = 0x0D;
+
+    const MYSQL_TYPE_NEWDATE = 0x0E;
+
+    const MYSQL_TYPE_VARCHAR = 0x0F;
+
+    const MYSQL_TYPE_BIT = 0x10;
+
+    const MYSQL_TYPE_TIMESTAMP2 = 0x11;
+
+    const MYSQL_TYPE_DATETIME2 = 0x12;
+
+    const MYSQL_TYPE_TIME2 = 0x13;
+
+    const MYSQL_TYPE_NEWDECIMAL = 0xF6;
+
+    const MYSQL_TYPE_ENUM = 0xF7;
+
+    const MYSQL_TYPE_SET = 0xF8;
+
+    const MYSQL_TYPE_TINY_BLOB = 0xF9;
+
+    const MYSQL_TYPE_MEDIUM_BLOB = 0xFA;
+
+    const MYSQL_TYPE_LONG_BLOB = 0xFB;
+
+    const MYSQL_TYPE_BLOB = 0xFC;
+
+    const MYSQL_TYPE_VAR_STRING = 0xFD;
+
+    const MYSQL_TYPE_STRING = 0xFE;
+
+    const MYSQL_TYPE_GEOMETRY = 0xFF;
+    
     protected $socket;
 
     /**
@@ -68,9 +130,17 @@ class Client
     
     protected $statusFlags = 0;
     
+    /**
+     * Executor being used to queue commands and execute them one by one in the correct order.
+     * 
+     * @var Executor
+     */
+    protected $executor;
+    
     public function __construct(SocketStream $socket)
     {
         $this->socket = $socket;
+        $this->executor = new Executor();
         
         $this->clientCaps |= self::CLIENT_SESSION_TRACK;
         $this->clientCaps |= self::CLIENT_TRANSACTIONS;
@@ -83,35 +153,41 @@ class Client
         $this->clientCaps |= self::CLIENT_PLUGIN_AUTH_LENENC_CLIENT_DATA;
     }
     
-    public function close()
+    public function shutdown(\Throwable $e = null): Awaitable
     {
-        $this->sequence = -1;
-        $this->stream->close();
+        if ($e) {
+            $this->executor->cancel($e);
+            
+            return $this->socket->close();
+        }
+        
+        return $this->executor->execute(function () {
+            return $this->socket->close();
+        });
     }
     
-    public function flush()
-    {
-        $this->sequence = -1;
-    }
-
     public function handshake(string $username, string $password): \Generator
     {
-        list ($auth, $authPlugin) = yield from $this->readAuthChallenge();
-        
-        $packet = $this->createAuthPacket($username, $password, $auth, $authPlugin);
-        
-        yield from $this->sendPacket($packet);
-        
-        $packet = yield from $this->readNextPacket();
-        
-        if (\ord($packet[0]) !== 0x00) {
-            throw new \RuntimeException('Authentication failed');
+        try {
+            list ($auth, $authPlugin) = yield from $this->readAuthChallenge();
+            
+            $packet = $this->createAuthPacket($username, $password, $auth, $authPlugin);
+            
+            yield from $this->sendPacket($packet);
+            
+            $packet = yield from $this->readRawPacket();
+            
+            if (\ord($packet[0]) !== 0x00) {
+                throw new \RuntimeException('Authentication failed');
+            }
+        } finally {
+            $this->sequence = -1;
         }
     }
     
     protected function readAuthChallenge(): \Generator
     {
-        $packet = yield from $this->readNextPacket();
+        $packet = yield from $this->readRawPacket();
         $len = \strlen($packet);
         $offset = 0;
         
@@ -196,24 +272,18 @@ class Client
         
         return $hash ^ \sha1(\substr($scramble, 0, 20) . \sha1($hash, true), true);
     }
-
-    public function sendCommand(string $packet): \Generator
+    
+    public function isEofDeprecated(): bool
     {
-        if ($this->sequence >= 0) {
-            throw new \RuntimeException('Cannot send new command while processing another command');
-        }
-        
-        return yield from $this->sendPacket($packet);
+        return ($this->capabilities & self::CLIENT_DEPRECATE_EOF) !== 0;
     }
-
-    public function sendPacket(string $packet): \Generator
+    
+    public function read(int $len): \Generator
     {
-        $packet = $this->encodeInt24(\strlen($packet)) . \chr(++$this->sequence % 256) . $packet;
-        
-        return yield $this->socket->write($packet);
+        return yield $this->socket->read($len);
     }
-
-    public function readNextPacket(): \Generator
+    
+    public function readRawPacket(): \Generator
     {
         $header = yield $this->socket->readBuffer(4, true);
         $offset = 0;
@@ -222,6 +292,49 @@ class Client
         $this->sequence = $this->readInt8($header, $offset);
         
         return $len ? yield $this->socket->readBuffer($len, true) : '';
+    }
+
+    public function readPacket(int ...$expected): \Generator
+    {
+        $packet = yield from $this->readRawPacket();
+        $type = \ord($packet[0]);
+        
+        if ($expected && !\in_array($type, $expected, true)) {
+            $expected = \implode(', ', \array_map(function (int $type) {
+                return \sprintf('0x%02X', $type);
+            }, $expected));
+            
+            throw new \RuntimeException(\sprintf('Received 0x%02X packet, expecting one of %s', $type, $expected));
+        }
+        
+        return [
+            $type,
+            \substr($packet, 1)
+        ];
+    }
+
+    public function sendCommand(callable $callback): Awaitable
+    {
+        return $this->executor->execute(function () use ($callback) {
+            try {
+                $result = $callback($this);
+                
+                if ($result instanceof \Generator) {
+                    $result = yield from $result;
+                }
+                
+                return $result;
+            } finally {
+                $this->sequence = -1;
+            }
+        });
+    }
+    
+    public function sendPacket(string $packet): \Generator
+    {
+        $packet = $this->encodeInt24(\strlen($packet)) . \chr(++$this->sequence % 256) . $packet;
+        
+        return yield $this->socket->write($packet);
     }
 
     public function discardByte(string $data, int & $offset, int $expected = null)
@@ -271,6 +384,55 @@ class Client
         }
     }
 
+    public function readInt64(string $data, int & $offset = 0)
+    {
+        try {
+            if (\PHP_INT_MAX >> 31) {
+                $int = \unpack('Va/Vb', \substr($data, $offset));
+                
+                return $int['a'] + ($int['b'] << 32);
+            }
+            
+            $int = \unpack('va/vb/Vc', \substr($data, $offset));
+            
+            return $int['a'] + ($int['b'] * (1 << 16)) + $int['c'] * (1 << 16) * (1 << 16);
+        } finally {
+            $offset += 8;
+        }
+    }
+
+    public function readUnsigned32(string $data, int & $offset = 0): int
+    {
+        try {
+            if (\PHP_INT_MAX >> 31) {
+                return \unpack('V', \substr($data, $offset))[1];
+            }
+            
+            $int = \unpack('v', \substr($data, $offset));
+            
+            return $int[1] + ($int[2] * (1 << 16));
+        } finally {
+            $offset += 4;
+        }
+    }
+
+    public function readUnsigned64(string $data, int & $offset = 0)
+    {
+        try {
+            if (\PHP_INT_MAX >> 31) {
+                $int = \unpack('Va/Vb', \substr($data, $offset));
+                
+                return $int['a'] + $int['b'] * (1 << 32);
+            }
+            
+            $int = \unpack('va/vb/vc/vd', \substr($data, $offset));
+            
+            return $int['a'] + ($int['b'] * (1 << 16)) + ($int['c'] + ($int['d'] * (1 << 16))) * (1 << 16) * (1 << 16);
+        } finally {
+            $offset += 8;
+        }
+    }
+
     public function readLengthEncodedInt(string $data, int & $offset)
     {
         $int = \ord(\substr($data, $offset, 1));
@@ -317,13 +479,67 @@ class Client
         }
         
         if ($len === 0xFB) {
-            return NULL;
+            return null;
         }
         
         $str = \substr($data, $offset, $len);
         $offset += \strlen($str);
         
         return $str;
+    }
+    
+    public function readBinary(int $type, string $data, int & $offset)
+    {
+        // TODO: Implement more data types...
+        $unsigned = $type & 0x80;
+        
+        switch ($type) {
+            case self::MYSQL_TYPE_STRING:
+            case self::MYSQL_TYPE_VARCHAR:
+            case self::MYSQL_TYPE_VAR_STRING:
+            case self::MYSQL_TYPE_ENUM:
+            case self::MYSQL_TYPE_SET:
+            case self::MYSQL_TYPE_LONG_BLOB:
+            case self::MYSQL_TYPE_MEDIUM_BLOB:
+            case self::MYSQL_TYPE_BLOB:
+            case self::MYSQL_TYPE_TINY_BLOB:
+            case self::MYSQL_TYPE_GEOMETRY:
+            case self::MYSQL_TYPE_BIT:
+            case self::MYSQL_TYPE_DECIMAL:
+            case self::MYSQL_TYPE_NEWDECIMAL:
+                return $this->readLengthEncodedString($data, $offset);
+            case self::MYSQL_TYPE_LONGLONG:
+            case self::MYSQL_TYPE_LONGLONG | 0x80:
+                return $unsigned && ($data[$offset + 7] & "\x80") ? $this->readUnsigned64($data, $offset) : $this->readInt64($data, $offset);
+            case self::MYSQL_TYPE_LONG:
+            case self::MYSQL_TYPE_LONG | 0x80:
+            case self::MYSQL_TYPE_INT24:
+            case self::MYSQL_TYPE_INT24 | 0x80:
+                $shift = PHP_INT_MAX >> 31 ? 32 : 0;
+                
+                return $unsigned && ($data[$offset + 3] & "\x80") ? $this->readUnsigned32($data, $offset) : (($this->readInt32($data, $offset) << $shift) >> $shift);
+            case self::MYSQL_TYPE_TINY:
+            case self::MYSQL_TYPE_TINY | 0x80:
+                $shift = PHP_INT_MAX >> 31 ? 56 : 24;
+                
+                return $unsigned ? $this->readInt8($data, $offset) : (($this->readInt8($data, $offset) << $shift) >> $shift);
+            case self::MYSQL_TYPE_DOUBLE:
+                try {
+                    return \unpack('d', \substr($data, $offset))[1];
+                } finally {
+                    $offset += 8;
+                }
+            case self::MYSQL_TYPE_FLOAT:
+                try {
+                    return \unpack('f', \substr($data, $offset))[1];
+                } finally {
+                    $offset += 4;
+                }
+            case self::MYSQL_TYPE_NULL:
+                return null;
+            default:
+                throw new \InvalidArgumentException(\sprintf('Unsupported column type: 0x%02X', $type));
+        }
     }
     
     public function encodeInt(int $val): string
