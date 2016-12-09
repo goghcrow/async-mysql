@@ -20,6 +20,11 @@ use KoolKode\Async\Deferred;
 use KoolKode\Async\Success;
 use KoolKode\Async\Util\Channel;
 
+/**
+ * Prepared statement that encapsulates an SQL query.
+ * 
+ * @author Martin Schröder
+ */
 class Statement
 {
     const CURSOR_TYPE_NO_CURSOR = 0x00;
@@ -30,22 +35,67 @@ class Statement
 
     const CURSOR_TYPE_SCROLLABLE = 0x04;
 
+    /**
+     * Original SQL query string.
+     * 
+     * @var string
+     */
     protected $sql;
 
+    /**
+     * Client to be used for sending commands.
+     * 
+     * @var Client
+     */
     protected $client;
 
+    /**
+     * Optional PSR logger instance.
+     * 
+     * @var LoggerInterface
+     */
     protected $logger;
 
+    /**
+     * ID of the statement if it has been prepared.
+     * 
+     * @var int
+     */
     protected $id;
     
+    /**
+     * Recompile / prepare the statement before next execution?
+     * 
+     * @var bool
+     */
     protected $recompile = false;
     
+    /**
+     * Limit to be applied to the query.
+     * 
+     * @var int
+     */
     protected $limit = 0;
     
+    /**
+     * Offset to be applied to the query.
+     * 
+     * @var int
+     */
     protected $offset = 0;
     
+    /**
+     * Bound param values.
+     * 
+     * @var array
+     */
     protected $params = [];
     
+    /**
+     * Definitions of all params as required by the DB (filled as statement is prepared).
+     * 
+     * @var array
+     */
     protected $paramDefinitions = [];
 
     public function __construct(string $sql, Client $client, LoggerInterface $logger = null)
@@ -60,6 +110,9 @@ class Statement
         $this->dispose();
     }
 
+    /**
+     * Dispose of the prepared statement.
+     */
     public function dispose(): Awaitable
     {        
         if ($this->id) {
@@ -83,6 +136,14 @@ class Statement
         return new Success(null);
     }
 
+    /**
+     * Apply a limit to the number of rows returned by the query.
+     * 
+     * @param int $limit
+     * @return Statement
+     * 
+     * @throws \InvalidArgumentException When a limit value less than 1 is given.
+     */
     public function limit(int $limit): Statement
     {
         if ($limit < 1) {
@@ -97,6 +158,14 @@ class Statement
         return $this;
     }
 
+    /**
+     * Skip the given number of result rows.
+     * 
+     * @param int $offset
+     * @return Statement
+     * 
+     * @throws \InvalidArgumentException When a negative offset is given.
+     */
     public function offset(int $offset): Statement
     {
         if ($offset < 0) {
@@ -111,6 +180,15 @@ class Statement
         return $this;
     }
     
+    /**
+     * Bind a value to a param placeholder.
+     * 
+     * @param int $pos 0-indexed parameter position.
+     * @param mixed $value
+     * @return Statement
+     * 
+     * @throws \InvalidArgumentException When the param index is negative.
+     */
     public function bind(int $pos, $value): Statement
     {
         if ($pos < 0) {
@@ -122,6 +200,11 @@ class Statement
         return $this;
     }
 
+    /**
+     * Execute the prepared statement.
+     * 
+     * @return ResultSet
+     */
     public function execute(): Awaitable
     {
         $coroutine = null;

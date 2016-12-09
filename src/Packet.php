@@ -13,6 +13,11 @@ declare(strict_types = 1);
 
 namespace KoolKode\Async\MySQL;
 
+/**
+ * Provides access to a single packet that has been sent by a MySQL server.
+ * 
+ * @author Martin Schröder
+ */
 class Packet
 {
     /**
@@ -22,10 +27,25 @@ class Packet
      */
     public $type;
     
+    /**
+     * Encoded packet data.
+     * 
+     * @var string
+     */
     protected $data;
     
+    /**
+     * Length of the encoded param data.
+     * 
+     * @var int
+     */
     protected $length;
     
+    /**
+     * Current read offset within the encoded data.
+     * 
+     * @var int
+     */
     protected $offset = 0;
     
     public function __construct(string $data, int $type = 0x00)

@@ -18,12 +18,34 @@ use KoolKode\Async\Coroutine;
 use KoolKode\Async\Success;
 use KoolKode\Async\Util\Channel;
 
+/**
+ * Provides access to the result of an SQL query.
+ * 
+ * @author Martin Schröder
+ */
 class ResultSet
 {
+    /**
+     * Number of rows affected by the query.
+     * 
+     * @var int
+     */
     protected $affectedRows;
 
+    /**
+     * ID of the last inserted item (if the table contained an auto-increment field).
+     * 
+     * @var int
+     */
     protected $lastInsertId;
     
+    /**
+     * Channel that provides result rows returned by a SELECT query.
+     * 
+     * This field will be NULL after the cursor has been closed!
+     * 
+     * @var Channel
+     */
     protected $channel;
 
     public function __construct($affectedRows, $lastInsertId, Channel $channel = null)
@@ -33,26 +55,49 @@ class ResultSet
         $this->channel = $channel;
     }
 
+    /**
+     * Ensure the cursor is closed when the result is not needed anymore.
+     */
     public function __destruct()
     {
         $this->closeCursor();
     }
 
+    /**
+     * Get the number of rows affected by the query (will allways be 0 for SELECT queries).
+     * 
+     * @return int
+     */
     public function affectedRows()
     {
         return $this->affectedRows;
     }
 
+    /**
+     * Get the last inserted ID.
+     * 
+     * @return int
+     */
     public function lastInsertId()
     {
         return $this->lastInsertId;
     }
 
+    /**
+     * Access all result rows using the underlying channel.
+     * 
+     * @return Channel
+     */
     public function channel(): Channel
     {
         return $this->channel ?? Channel::fromArray([]);
     }
 
+    /**
+     * Close the cursor of this result.
+     * 
+     * Allways call this method to free the DB connection if you do not fetch all rows from the result.
+     */
     public function closeCursor()
     {
         if ($this->channel !== null) {
@@ -70,6 +115,11 @@ class ResultSet
         }
     }
 
+    /**
+     * Fetch the next row from the DB.
+     * 
+     * @return array or NULL when no more rows are available.
+     */
     public function fetch(): Awaitable
     {
         if ($this->channel === null) {
@@ -79,6 +129,11 @@ class ResultSet
         return $this->channel->receive();
     }
 
+    /**
+     * Fetch all rows from the DB into an array.
+     * 
+     * @return array
+     */
     public function fetchAll(): Awaitable
     {
         if ($this->channel === null) {
@@ -100,6 +155,12 @@ class ResultSet
         });
     }
 
+    /**
+     * Fetch all values for the given column into an array.
+     * 
+     * @param string $alias
+     * @return array
+     */
     public function fetchColumn(string $alias): Awaitable
     {
         if ($this->channel === null) {

@@ -13,9 +13,24 @@ declare(strict_types = 1);
 
 namespace KoolKode\Async\MySQL;
 
+/**
+ * Assembles data of a MySQL packet using convenient mutator methods.
+ * 
+ * @author Martin Schröder
+ */
 class PacketBuilder
 {
-    protected $data = '';
+    /**
+     * Assembled encoded packet data.
+     * 
+     * @var string
+     */
+    protected $data;
+    
+    public function __construct(string $data = '')
+    {
+        $this->data = $data;
+    }
 
     public function __toString(): string
     {

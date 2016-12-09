@@ -17,8 +17,18 @@ use KoolKode\Async\Awaitable;
 use KoolKode\Async\Coroutine;
 use KoolKode\Async\Socket\SocketFactory;
 
+/**
+ * MySQL DB connection that can be used to execute SQL queries.
+ * 
+ * @author Martin Schröder
+ */
 class Connection
 {
+    /**
+     * Client object being used to communicate with the DB server.
+     * 
+     * @var Client
+     */
     protected $client;
     
     public function __construct(Client $client)
@@ -26,6 +36,16 @@ class Connection
         $this->client = $client;
     }
     
+    /**
+     * Establish a socket connection to a MySQL server.
+     * 
+     * @param string $dsn PDO-style data source name.
+     * @param string $username DB username.
+     * @param string $password DB password.
+     * @return Connection
+     * 
+     * @throws \InvalidArgumentException When the DSN is invalid.
+     */
     public static function connect(string $dsn, string $username, string $password): Awaitable
     {
         return new Coroutine(function () use ($dsn, $username, $password) {

@@ -17,6 +17,11 @@ use KoolKode\Async\Awaitable;
 use KoolKode\Async\Socket\SocketStream;
 use KoolKode\Async\Util\Executor;
 
+/**
+ * Client that synchronizes access to a MySQL DB.
+ * 
+ * @author Martin Schröder
+ */
 class Client
 {
     const CLIENT_LONG_FLAG = 0x00000004;
@@ -109,6 +114,11 @@ class Client
 
     const MYSQL_TYPE_GEOMETRY = 0xFF;
 
+    /**
+     * Stream being used to communicate with the DB server.
+     * 
+     * @var SocketStream
+     */
     protected $socket;
 
     /**
@@ -118,16 +128,46 @@ class Client
      */
     protected $id;
 
+    /**
+     * Current sequence number of DB packets.
+     * 
+     * @var int
+     */
     protected $sequence = -1;
 
-    protected $info;
+    /**
+     * Informal data returned by the DB server.
+     * 
+     * @var array
+     */
+    protected $info = [];
 
+    /**
+     * Negotiated protocol capabilities.
+     * 
+     * @var int
+     */
     protected $capabilities = 0;
 
+    /**
+     * Capabilities of this client.
+     * 
+     * @var int
+     */
     protected $clientCaps = 0;
 
+    /**
+     * Capabilities of the DB server.
+     * 
+     * @var int
+     */
     protected $serverCaps = 0;
 
+    /**
+     * Connection status flags.
+     * 
+     * @var int
+     */
     protected $statusFlags = 0;
 
     /**
