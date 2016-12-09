@@ -42,8 +42,11 @@ class SetupTest extends AsyncTestCase
         try {
             $this->assertGreaterThan(0, yield $conn->ping());
             
-            $stmt = $conn->prepare('SHOW TABLES');
+            $stmt = $conn->prepare("SELECT * FROM customer WHERE id IN (?, ?) ORDER BY id");
             $this->assertInstanceOf(Statement::class, $stmt);
+            
+            $stmt->bind(0, 2);
+            $stmt->bind(1, 1);
             
             $result = yield $stmt->execute();
             $this->assertInstanceOf(ResultSet::class, $result);
@@ -59,9 +62,13 @@ class SetupTest extends AsyncTestCase
             }
             
             $rows2 = yield (yield $stmt->execute())->fetchAll();
-            $stmt = null;
-            
             $this->assertEquals($rows1, $rows2);
+            
+            $stmt->bind(1, 3);
+            $stmt->limit(2);
+            
+            $result = yield $stmt->execute();
+            $this->assertEquals('Async MySQL', implode(' ', yield $result->fetchColumn('name')));
         } finally {
             $conn->shutdown();
         }

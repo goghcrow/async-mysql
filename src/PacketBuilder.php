@@ -27,6 +27,13 @@ class PacketBuilder
         return $this->data;
     }
     
+    public function isLittleEndian()
+    {
+        static $result = null;
+        
+        return $result ?? ($result = (\unpack('S', "\x01\x00")[1] === 1));
+    }
+    
     public function write(string $bytes): PacketBuilder
     {
         $this->data .= $bytes;
@@ -92,6 +99,13 @@ class PacketBuilder
     public function writeNullString(string $string): PacketBuilder
     {
         $this->data .= $string . "\x00";
+        
+        return $this;
+    }
+
+    public function writeInt64(int $val): string
+    {
+        $this->data .= \pack('VV', $val & 0xFFFFFFFF, $val >> 32);
         
         return $this;
     }

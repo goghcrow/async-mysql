@@ -15,7 +15,7 @@ namespace KoolKode\Async\MySQL;
 
 use KoolKode\Async\Awaitable;
 use KoolKode\Async\Coroutine;
-use KoolKode\Async\Failure;
+use KoolKode\Async\Success;
 use KoolKode\Async\Util\Channel;
 
 class ResultSet
@@ -69,11 +69,11 @@ class ResultSet
             }
         }
     }
-    
+
     public function fetch(): Awaitable
     {
         if ($this->channel === null) {
-            return new Failure(new \RuntimeException('Result set does not contain any rows'));
+            return new Success(null);
         }
         
         return $this->channel->receive();
@@ -82,7 +82,7 @@ class ResultSet
     public function fetchAll(): Awaitable
     {
         if ($this->channel === null) {
-            return new Failure(new \RuntimeException('Result set does not contain any rows'));
+            return new Success([]);
         }
         
         return new Coroutine(function () {
@@ -91,6 +91,27 @@ class ResultSet
             try {
                 while (null !== ($row = yield $this->channel->receive())) {
                     $result[] = $row;
+                }
+            } finally {
+                $this->closeCursor();
+            }
+            
+            return $result;
+        });
+    }
+
+    public function fetchColumn(string $alias): Awaitable
+    {
+        if ($this->channel === null) {
+            return new Success([]);
+        }
+        
+        return new Coroutine(function () use ($alias) {
+            $result = [];
+            
+            try {
+                while (null !== ($row = yield $this->channel->receive())) {
+                    $result[] = $row[$alias];
                 }
             } finally {
                 $this->closeCursor();

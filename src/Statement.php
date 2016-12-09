@@ -43,6 +43,10 @@ class Statement
     protected $limit = 0;
     
     protected $offset = 0;
+    
+    protected $params = [];
+    
+    protected $paramDefinitions = [];
 
     public function __construct(string $sql, Client $client, LoggerInterface $logger = null)
     {
@@ -57,12 +61,14 @@ class Statement
     }
 
     public function dispose(): Awaitable
-    {
+    {        
         if ($this->id) {
             try {
                 $id = $this->id;
                 
                 return $this->client->sendCommand(function (Client $client) use ($id) {
+                    $this->paramDefinitions = [];
+                    
                     $builder = new PacketBuilder();
                     $builder->writeInt8(0x19);
                     $builder->writeInt32($id);
@@ -79,14 +85,39 @@ class Statement
 
     public function limit(int $limit): Statement
     {
-        $this->limit = $limit;
+        if ($limit < 1) {
+            throw new \InvalidArgumentException('Limit must not be less than 1');
+        }
+        
+        if ($limit !== $this->limit) {
+            $this->limit = $limit;
+            $this->recompile = true;
+        }
         
         return $this;
     }
 
     public function offset(int $offset): Statement
     {
-        $this->offset = $offset;
+        if ($offset < 0) {
+            throw new \InvalidArgumentException('Offset must not be negative');
+        }
+        
+        if ($offset !== $this->offset) {
+            $this->offset = $offset;
+            $this->recompile = true;
+        }
+        
+        return $this;
+    }
+    
+    public function bind(int $pos, $value): Statement
+    {
+        if ($pos < 0) {
+            throw new \InvalidArgumentException('Param index must not be negative');
+        }
+        
+        $this->params[$pos] = $value;
         
         return $this;
     }
@@ -136,6 +167,14 @@ class Statement
     {
         $sql = $this->sql;
         
+        if ($this->limit) {
+            $sql .= ' LIMIT ' . $this->limit;
+            
+            if ($this->offset) {
+                $sql .= ' OFFSET ' . $this->offset;
+            }
+        }
+        
         $builder = new PacketBuilder();
         $builder->writeInt8(0x16);
         $builder->write($sql);
@@ -157,9 +196,14 @@ class Statement
         
         $warningCount = $packet->readInt16();
         
-        // TODO: Params...
+        for ($i = 0; $i < $paramCount; $i++) {
+            $this->paramDefinitions[] = $this->parseColumnDefinition($client, yield from $client->readRawPacket());
+        }
         
-
+        if ($paramCount && !$client->isEofDeprecated()) {
+            yield from $client->readPacket(0xFE);
+        }
+        
         for ($i = 0; $i < $columnCount; $i++) {
             $this->parseColumnDefinition($client, yield from $client->readRawPacket());
         }
@@ -198,11 +242,19 @@ class Statement
 
     protected function executeQuery(Client $client, Deferred $defer, int $prefetch = 4): \Generator
     {
+        if (\count($this->params) !== \count($this->paramDefinitions)) {
+            throw new \RuntimeException(\sprintf('Query requires %u params, %u params bound', \count($this->paramDefinitions), \count($this->params)));
+        }
+        
         $builder = new PacketBuilder();
         $builder->writeInt8(0x17);
         $builder->writeInt32($this->id);
         $builder->writeInt8(self::CURSOR_TYPE_NO_CURSOR);
         $builder->writeInt32(1);
+        
+        if (!empty($this->params)) {
+            $builder->write($this->encodeParams());
+        }
         
         yield from $client->sendPacket($builder->build());
         
@@ -256,6 +308,102 @@ class Statement
         } catch (\Throwable $e) {
             $channel->close($e);
         }
+    }
+
+    protected function encodeParams(): string
+    {
+        $types = new PacketBuilder();
+        $values = '';
+        
+        // Append NULL-bitmap with all bits set to 0:
+        $mask = \str_repeat("\0", (\count($this->params) + 7) >> 3);
+        
+        for ($count = \count($this->paramDefinitions), $i = 0; $i < $count; $i++) {
+            if (!\array_key_exists($i, $this->params)) {
+                throw new \RuntimeException(\sprintf('Param %u is not bound'));
+            }
+            
+            $val = $this->params[$i];
+            
+            if ($val === null) {
+                // Set NULL bit at param position to 1:
+                $off = ($i >> 3);
+                $mask[$off] |= \chr(1 << ($i % 8));
+            } else {
+                $bound = true;
+            }
+            
+            list ($unsigned, $type, $val) = $this->encodeValue($val, $this->paramDefinitions[$i]);
+            
+            $types->writeInt8($type);
+            $types->writeInt8($unsigned ? 0x80 : 0x00);
+            
+            $values .= $val;
+        }
+        
+        $builder = new PacketBuilder();
+        $builder->write($mask);
+        $builder->writeInt8((int) $bound);
+        
+        if ($bound) {
+            $builder->write($types->build());
+            $builder->write($values);
+        }
+        
+        return $builder->build();
+    }
+
+    protected function encodeValue($val, array $def): array
+    {
+        // TODO: Convert value into the correct param type...
+        
+        $builder = new PacketBuilder();
+        $unsigned = false;
+        
+        switch (\gettype($val)) {
+            case 'boolean':
+                $type = Client::MYSQL_TYPE_TINY;
+                $builder->write($val ? "\x01" : "\x00");
+                break;
+            case 'integer':
+                if ($val >= 0) {
+                    $unsigned = true;
+                }
+                
+                if ($val >= 0 && $val < (1 << 15)) {
+                    $type = Client::MYSQL_TYPE_SHORT;
+                    $builder->writeInt16($val);
+                } else {
+                    $type = Client::MYSQL_TYPE_LONGLONG;
+                    $builder->writeInt64($val);
+                }
+                break;
+            case 'double':
+                $type = Client::MYSQL_TYPE_DOUBLE;
+                $value = \pack('d', $val);
+                
+                if ($this->isLittleEndian()) {
+                    $value = \strrev($value);
+                }
+                
+                $builder->write($value);
+                break;
+            case 'string':
+                $type = Client::MYSQL_TYPE_LONG_BLOB;
+                $builder->writeLengthEncodedString($val);
+                break;
+            case 'NULL':
+                $type = Client::MYSQL_TYPE_NULL;
+                break;
+            default:
+                throw new ProtocolError("Unexpected type for binding parameter: " . \gettype($val));
+        }
+        
+        return [
+            $unsigned,
+            $type,
+            $builder->build()
+        ];
     }
 
     protected function parseRow(Client $client, Packet $packet, int $columnCount, array $columnNames, array $defs): array
