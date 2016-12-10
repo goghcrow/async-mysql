@@ -36,9 +36,9 @@ class SetupTest extends AsyncTestCase
         
         $pdo->exec("INSERT INTO customer (name) VALUES ('KoolKode'), ('Async'), ('MySQL'), ('Git')");
         
-        $factory = new ConnectionFactory();
+        $factory = new ConnectionFactory($dsn, $username, $password);
         
-        $conn = yield $factory->connect($dsn, $username, $password);
+        $conn = yield $factory->connect();
         $this->assertInstanceOf(Connection::class, $conn);
         
         try {

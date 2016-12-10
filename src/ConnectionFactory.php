@@ -25,42 +25,59 @@ use KoolKode\Async\Socket\SocketFactory;
 class ConnectionFactory
 {
     /**
+     * DB connection settings.
+     * 
+     * @var array
+     */
+    protected $settings;
+
+    /**
+     * DB login username.
+     * 
+     * @var string
+     */
+    protected $username;
+
+    /**
+     * DB login password.
+     * 
+     * @var string
+     */
+    protected $password;
+
+    /**
+     * Socket factory being used to connect to the DB server.
+     * 
+     * @var SocketFactory
+     */
+    protected $socketFactory;
+
+    /**
+     * Create a new MySQL DB connection factory.
+     * 
+     * @param string $dsn PSO-style DSN.
+     * @param string $username
+     * @param string $password
+     */
+    public function __construct(string $dsn, string $username = null, string $password = null)
+    {
+        $this->settings = $this->parseSettings($dsn);
+        $this->username = $username ?? '';
+        $this->password = $password ?? '';
+        
+        $this->socketFactory = $this->createSocketFactory();
+    }
+
+    /**
      * Establish a socket connection to a MySQL server.
      * 
-     * @param string $dsn PDO-style data source name.
-     * @param string $username DB username.
-     * @param string $password DB password.
      * @return Connection
      * 
      * @throws \InvalidArgumentException When the DSN is invalid.
      */
-    public function connect(string $dsn, string $username, string $password): Awaitable
+    public function connect(): Awaitable
     {
-        return new Coroutine($this->establishConnection($dsn, $username, $password));
-    }
-
-    protected function establishConnection(string $dsn, string $username, string $password): \Generator
-    {
-        $settings = $this->parseSettings($dsn);
-        $factory = $this->createSocketFactory($settings);
-        
-        $socket = yield $factory->createSocketStream();
-        
-        try {
-            $client = new Client($socket);
-            
-            yield from $client->handshake($username, $password);
-            
-            if (isset($settings['dbname'])) {
-                yield $this->setDefaultDatabase($client, $settings['dbname']);
-            }
-        } catch (\Throwable $e) {
-            $socket->close();
-            
-            throw $e;
-        }
-        
-        return new Connection($client);
+        return new Coroutine($this->establishConnection());
     }
 
     protected function parseSettings(string $dsn): array
@@ -91,29 +108,48 @@ class ConnectionFactory
         return $settings;
     }
 
-    protected function createSocketFactory(array $settings): SocketFactory
+    protected function createSocketFactory(): SocketFactory
     {
-        if (isset($settings['unix_socket'])) {
-            return new SocketFactory($settings['unix_socket'], 'unix');
+        if (isset($this->settings['unix_socket'])) {
+            return new SocketFactory($this->settings['unix_socket'], 'unix');
         }
         
-        if (isset($settings['host'])) {
-            $url = \sprintf('%s:%u', $settings['host'], $settings['port'] ?? 3306);
+        if (isset($this->settings['host'])) {
+            $url = \sprintf('%s:%u', $this->settings['host'], $this->settings['port'] ?? 3306);
             
             return new SocketFactory($url);
         }
         
-        if (empty($settings['host']) && empty($settings['unix_socket'])) {
-            throw new \InvalidArgumentException('Neighter MySQL host nor Unix domain socket specified in MySQL DSN');
-        }
+        throw new \InvalidArgumentException('Neighter MySQL host nor Unix domain socket specified in MySQL DSN');
     }
 
-    protected function setDefaultDatabase(Client $client, string $database): Awaitable
+    protected function establishConnection(): \Generator
     {
-        return $client->sendCommand(function (Client $client) use ($database) {
+        $socket = yield $this->socketFactory->createSocketStream();
+        
+        try {
+            $client = new Client($socket);
+            
+            yield from $client->handshake($this->username, $this->password);
+            
+            if (isset($this->settings['dbname'])) {
+                yield $this->switchDefaultDatabase($client);
+            }
+        } catch (\Throwable $e) {
+            $socket->close();
+            
+            throw $e;
+        }
+        
+        return new Connection($client);
+    }
+
+    protected function switchDefaultDatabase(Client $client): Awaitable
+    {
+        return $client->sendCommand(function (Client $client) {
             $builder = new PacketBuilder();
             $builder->writeInt8(0x02);
-            $builder->write($database);
+            $builder->write($this->settings['dbname']);
             
             yield from $client->sendPacket($builder->build());
             yield from $client->readPacket(0x00);
