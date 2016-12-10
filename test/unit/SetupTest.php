@@ -38,39 +38,50 @@ class SetupTest extends AsyncTestCase
         
         $factory = new ConnectionFactory($dsn, $username, $password);
         
-        $conn = yield $factory->connect();
-        $this->assertInstanceOf(Connection::class, $conn);
+        $conn = new ConnectionPool($factory);
+        
+//         $conn = yield $factory->connect();
+//         $this->assertInstanceOf(Connection::class, $conn);
         
         try {
-            $this->assertGreaterThan(0, yield $conn->ping());
+//             $this->assertGreaterThan(0, yield $conn->ping());
             
             $stmt = $conn->prepare("SELECT * FROM customer WHERE id IN (?, ?) ORDER BY id");
             $this->assertInstanceOf(Statement::class, $stmt);
             
-            $stmt->bind(0, 2);
-            $stmt->bind(1, 1);
-            
-            $result = yield $stmt->execute();
-            $this->assertInstanceOf(ResultSet::class, $result);
-            
-            $rows1 = [];
-            
             try {
-                while ($row = yield $result->fetch()) {
-                    $rows1[] = $row;
+                $stmt->bind(0, 2);
+                $stmt->bind(1, 1);
+                
+                $result = yield $stmt->execute();
+                $this->assertInstanceOf(ResultSet::class, $result);
+                
+                $rows1 = [];
+                
+                try {
+                    while ($row = yield $result->fetch()) {
+                        $rows1[] = $row;
+                    }
+                } finally {
+                    $result->closeCursor();
                 }
+                
+                $rows2 = yield (yield $stmt->execute())->fetchAll();
+                $this->assertEquals($rows1, $rows2);
             } finally {
-                $result->closeCursor();
+                $stmt->dispose();
             }
             
-            $rows2 = yield (yield $stmt->execute())->fetchAll();
-            $this->assertEquals($rows1, $rows2);
+            $stmt = $conn->prepare("SELECT name FROM customer ORDER BY id");
             
-            $stmt->bind(1, 3);
-            $stmt->limit(2);
-            
-            $result = yield $stmt->execute();
-            $this->assertEquals('Async MySQL', implode(' ', yield $result->fetchColumn('name')));
+            try {
+                $stmt->limit(2)->offset(1);
+                
+                $result = yield $stmt->execute();
+                $this->assertEquals('Async MySQL', implode(' ', yield $result->fetchColumn('name')));
+            } finally {
+                yield $stmt->dispose();
+            }
         } finally {
             $conn->shutdown();
         }

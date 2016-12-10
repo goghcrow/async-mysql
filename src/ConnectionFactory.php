@@ -16,14 +16,18 @@ namespace KoolKode\Async\MySQL;
 use KoolKode\Async\Awaitable;
 use KoolKode\Async\Coroutine;
 use KoolKode\Async\Socket\SocketFactory;
+use Psr\Log\LoggerAwareInterface;
+use Psr\Log\LoggerAwareTrait;
 
 /**
  * Factory that establishes connections to a MySQL DB server.
  * 
  * @author Martin Schröder
  */
-class ConnectionFactory
+class ConnectionFactory implements LoggerAwareInterface
 {
+    use LoggerAwareTrait;
+    
     /**
      * DB connection settings.
      * 
@@ -69,15 +73,23 @@ class ConnectionFactory
     }
 
     /**
-     * Establish a socket connection to a MySQL server.
+     * Establish a new connection to a MySQL server.
      * 
      * @return Connection
-     * 
-     * @throws \InvalidArgumentException When the DSN is invalid.
      */
     public function connect(): Awaitable
     {
         return new Coroutine($this->establishConnection());
+    }
+    
+    /**
+     * Create a new connected MySQL client.
+     *
+     * @return Connection
+     */
+    public function connectClient(): Awaitable
+    {
+        return new Coroutine($this->establishConnection(false));
     }
 
     protected function parseSettings(string $dsn): array
@@ -123,12 +135,12 @@ class ConnectionFactory
         throw new \InvalidArgumentException('Neighter MySQL host nor Unix domain socket specified in MySQL DSN');
     }
 
-    protected function establishConnection(): \Generator
+    protected function establishConnection(bool $wrap = true): \Generator
     {
         $socket = yield $this->socketFactory->createSocketStream();
         
         try {
-            $client = new Client($socket);
+            $client = new Client($socket, $this->logger);
             
             yield from $client->handshake($this->username, $this->password);
             
@@ -141,7 +153,7 @@ class ConnectionFactory
             throw $e;
         }
         
-        return new Connection($client);
+        return $wrap ? new Connection($client, $this->logger) : $client;
     }
 
     protected function switchDefaultDatabase(Client $client): Awaitable

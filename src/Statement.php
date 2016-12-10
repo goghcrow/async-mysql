@@ -17,6 +17,7 @@ use Psr\Log\LoggerInterface;
 use KoolKode\Async\Awaitable;
 use KoolKode\Async\Coroutine;
 use KoolKode\Async\Deferred;
+use KoolKode\Async\Failure;
 use KoolKode\Async\Success;
 use KoolKode\Async\Util\Channel;
 
@@ -70,6 +71,8 @@ class Statement
      */
     protected $recompile = false;
     
+    protected $disposed = false;
+    
     /**
      * Limit to be applied to the query.
      * 
@@ -97,6 +100,8 @@ class Statement
      * @var array
      */
     protected $paramDefinitions = [];
+    
+    protected $result;
 
     public function __construct(string $sql, Client $client, LoggerInterface $logger = null)
     {
@@ -114,7 +119,13 @@ class Statement
      * Dispose of the prepared statement.
      */
     public function dispose(): Awaitable
-    {        
+    {
+        if ($this->disposed) {
+            return new Success(null);
+        }
+        
+        $this->disposed = true;
+        
         if ($this->id) {
             try {
                 $id = $this->id;
@@ -207,6 +218,14 @@ class Statement
      */
     public function execute(): Awaitable
     {
+        if ($this->disposed) {
+            return new Failure(new \RuntimeException('Cannot execute a disposed statement'));
+        }
+        
+        if ($this->result) {
+            return new Failure(new \RuntimeException('Cannot execute a statement while fetching result rows'));
+        }
+        
         $coroutine = null;
         
         $defer = new Deferred(function ($defer, \Throwable $e) use (& $coroutine) {
@@ -373,9 +392,11 @@ class Statement
             yield from $client->readPacket(0xFE);
         }
         
-        $defer->resolve(new ResultSet(0, 0, $channel = new Channel($prefetch)));
+        $this->result = new ResultSet(0, 0, $channel = new Channel($prefetch));
         
         try {
+            $defer->resolve($this->result);
+            
             while (true) {
                 $packet = yield from $client->readPacket(0x00, 0xFE);
                 
@@ -387,8 +408,12 @@ class Statement
                 yield $channel->send($this->parseRow($client, $packet, $columnCount, $names, $defs));
             }
             
+            $this->result = null;
+            
             $channel->close();
         } catch (\Throwable $e) {
+            $this->result = null;
+            
             $channel->close($e);
         }
     }

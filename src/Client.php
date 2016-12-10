@@ -16,6 +16,7 @@ namespace KoolKode\Async\MySQL;
 use KoolKode\Async\Awaitable;
 use KoolKode\Async\Socket\SocketStream;
 use KoolKode\Async\Util\Executor;
+use Psr\Log\LoggerInterface;
 
 /**
  * Client that synchronizes access to a MySQL DB.
@@ -23,7 +24,7 @@ use KoolKode\Async\Util\Executor;
  * @author Martin Schröder
  */
 class Client
-{
+{    
     const CLIENT_LONG_FLAG = 0x00000004;
 
     const CLIENT_CONNECT_WITH_DB = 0x00000008;
@@ -176,10 +177,19 @@ class Client
      * @var Executor
      */
     protected $executor;
+    
+    /**
+     * PSR logger instance.
+     * 
+     * @var LoggerInterface
+     */
+    protected $logger;
 
-    public function __construct(SocketStream $socket)
+    public function __construct(SocketStream $socket, LoggerInterface $logger = null)
     {
         $this->socket = $socket;
+        $this->logger = $logger;
+        
         $this->executor = new Executor();
         
         $this->clientCaps |= self::CLIENT_SESSION_TRACK;

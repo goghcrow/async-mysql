@@ -14,6 +14,9 @@ declare(strict_types = 1);
 namespace KoolKode\Async\MySQL;
 
 use KoolKode\Async\Awaitable;
+use KoolKode\Async\Failure;
+use KoolKode\Async\Success;
+use Psr\Log\LoggerInterface;
 
 /**
  * MySQL DB connection that can be used to execute SQL queries.
@@ -29,14 +32,24 @@ class Connection
      */
     protected $client;
     
+    protected $disposed = false;
+    
+    /**
+     * PSR logger instance.
+     * 
+     * @var LoggerInterface
+     */
+    protected $logger;
+    
     /**
      * Create a new MySQL connection using the given DB client.
      * 
      * @param Client $client
      */
-    public function __construct(Client $client)
+    public function __construct(Client $client, LoggerInterface $logger = null)
     {
         $this->client = $client;
+        $this->logger = $logger;
     }
     
     /**
@@ -46,7 +59,13 @@ class Connection
      */
     public function shutdown(\Throwable $e = null): Awaitable
     {
-        return $this->client->shutdown($e);
+        if (!$this->disposed) {
+            $this->disposed = true;
+            
+            return $this->client->shutdown($e);
+        }
+        
+        return new Success(null);
     }
 
     /**
@@ -56,6 +75,10 @@ class Connection
      */
     public function ping(): Awaitable
     {
+        if ($this->disposed) {
+            return new Failure(new \RuntimeException('Cannot ping a disposed connection'));
+        }
+        
         return $this->client->sendCommand(function (Client $client) {
             $builder = new PacketBuilder();
             $builder->writeInt8(0x0E);
@@ -77,6 +100,10 @@ class Connection
      */
     public function prepare(string $sql): Statement
     {
-        return new Statement($sql, $this->client);
+        if ($this->disposed) {
+            return new Failure(new \RuntimeException('Cannot prepare a statement using a disposed connection'));
+        }
+        
+        return new Statement($sql, $this->client, $this->logger);
     }
 }
