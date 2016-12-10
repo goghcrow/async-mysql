@@ -14,8 +14,6 @@ declare(strict_types = 1);
 namespace KoolKode\Async\MySQL;
 
 use KoolKode\Async\Awaitable;
-use KoolKode\Async\Coroutine;
-use KoolKode\Async\Socket\SocketFactory;
 
 /**
  * MySQL DB connection that can be used to execute SQL queries.
@@ -31,81 +29,14 @@ class Connection
      */
     protected $client;
     
+    /**
+     * Create a new MySQL connection using the given DB client.
+     * 
+     * @param Client $client
+     */
     public function __construct(Client $client)
     {
         $this->client = $client;
-    }
-    
-    /**
-     * Establish a socket connection to a MySQL server.
-     * 
-     * @param string $dsn PDO-style data source name.
-     * @param string $username DB username.
-     * @param string $password DB password.
-     * @return Connection
-     * 
-     * @throws \InvalidArgumentException When the DSN is invalid.
-     */
-    public static function connect(string $dsn, string $username, string $password): Awaitable
-    {
-        return new Coroutine(function () use ($dsn, $username, $password) {
-            if ('mysql:' !== \substr($dsn, 0, 6)) {
-                throw new \InvalidArgumentException(sprintf('Invalid MySQL DSN: "%s"', $dsn));
-            }
-            
-            $settings = [];
-            
-            foreach (\explode(';', \substr($dsn, 6)) as $part) {
-                list ($k, $v) = \array_map('trim', \explode('=', $part));
-                
-                switch ($k) {
-                    case 'host':
-                    case 'dbname':
-                    case 'unix_socket':
-                        $settings[$k] = $v;
-                        break;
-                    case 'port':
-                        $settings[$k] = (int) $v;
-                        break;
-                    default:
-                        throw new \InvalidArgumentException(\sprintf('Unknown MySQL DSN param: "%s"', $k));
-                }
-            }
-            
-            if (empty($settings['host']) && empty($settings['unix_socket'])) {
-                throw new \InvalidArgumentException('Neighter MySQL host nor Unix domain socket specified in MySQL DSN');
-            }
-            
-            if (empty($settings['unix_socket'])) {
-                $url = \sprintf('%s:%u', $settings['host'], $settings['port'] ?? 3306);
-                $factory = new SocketFactory($url);
-            } else {
-                $factory = new SocketFactory($settings['unix_socket'], 'unix');
-            }
-            
-            $client = new Client($socket = yield $factory->createSocketStream());
-            
-            try {
-                yield from $client->handshake($username, $password);
-                
-                if (isset($settings['dbname'])) {
-                    yield $client->sendCommand(function (Client $client) use ($settings) {
-                        $builder = new PacketBuilder();
-                        $builder->writeInt8(0x02);
-                        $builder->write($settings['dbname']);
-                        
-                        yield from $client->sendPacket($builder->build());
-                        yield from $client->readPacket(0x00);
-                    });
-                }
-            } catch (\Throwable $e) {
-                $socket->close();
-                
-                throw $e;
-            }
-            
-            return new Connection($client);
-        });
     }
     
     /**
