@@ -134,7 +134,7 @@ class ResultSet
      * 
      * @return array
      */
-    public function fetchAll(): Awaitable
+    public function fetchArray(): Awaitable
     {
         if ($this->channel === null) {
             return new Success([]);
@@ -161,7 +161,7 @@ class ResultSet
      * @param string $alias
      * @return array
      */
-    public function fetchColumn(string $alias): Awaitable
+    public function fetchColumnArray(string $alias): Awaitable
     {
         if ($this->channel === null) {
             return new Success([]);

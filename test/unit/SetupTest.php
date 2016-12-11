@@ -66,7 +66,7 @@ class SetupTest extends AsyncTestCase
                     $result->closeCursor();
                 }
                 
-                $rows2 = yield (yield $stmt->execute())->fetchAll();
+                $rows2 = yield (yield $stmt->execute())->fetchArray();
                 $this->assertEquals($rows1, $rows2);
             } finally {
                 $stmt->dispose();
@@ -75,10 +75,8 @@ class SetupTest extends AsyncTestCase
             $stmt = $conn->prepare("SELECT name FROM customer ORDER BY id");
             
             try {
-                $stmt->limit(2)->offset(1);
-                
-                $result = yield $stmt->execute();
-                $this->assertEquals('Async MySQL', implode(' ', yield $result->fetchColumn('name')));
+                $result = yield $stmt->limit(2)->offset(1)->execute();
+                $this->assertEquals('Async MySQL', implode(' ', yield $result->fetchColumnArray('name')));
             } finally {
                 yield $stmt->dispose();
             }

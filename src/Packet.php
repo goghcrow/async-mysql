@@ -261,48 +261,48 @@ class Packet
         $unsigned = $type & 0x80;
         
         switch ($type) {
-            case Client::MYSQL_TYPE_STRING:
-            case Client::MYSQL_TYPE_VARCHAR:
-            case Client::MYSQL_TYPE_VAR_STRING:
-            case Client::MYSQL_TYPE_ENUM:
-            case Client::MYSQL_TYPE_SET:
-            case Client::MYSQL_TYPE_LONG_BLOB:
-            case Client::MYSQL_TYPE_MEDIUM_BLOB:
-            case Client::MYSQL_TYPE_BLOB:
-            case Client::MYSQL_TYPE_TINY_BLOB:
-            case Client::MYSQL_TYPE_GEOMETRY:
-            case Client::MYSQL_TYPE_BIT:
-            case Client::MYSQL_TYPE_DECIMAL:
-            case Client::MYSQL_TYPE_NEWDECIMAL:
+            case Constants::MYSQL_TYPE_STRING:
+            case Constants::MYSQL_TYPE_VARCHAR:
+            case Constants::MYSQL_TYPE_VAR_STRING:
+            case Constants::MYSQL_TYPE_ENUM:
+            case Constants::MYSQL_TYPE_SET:
+            case Constants::MYSQL_TYPE_LONG_BLOB:
+            case Constants::MYSQL_TYPE_MEDIUM_BLOB:
+            case Constants::MYSQL_TYPE_BLOB:
+            case Constants::MYSQL_TYPE_TINY_BLOB:
+            case Constants::MYSQL_TYPE_GEOMETRY:
+            case Constants::MYSQL_TYPE_BIT:
+            case Constants::MYSQL_TYPE_DECIMAL:
+            case Constants::MYSQL_TYPE_NEWDECIMAL:
                 return $this->readLengthEncodedString();
-            case Client::MYSQL_TYPE_LONGLONG:
-            case Client::MYSQL_TYPE_LONGLONG | 0x80:
+            case Constants::MYSQL_TYPE_LONGLONG:
+            case Constants::MYSQL_TYPE_LONGLONG | 0x80:
                 return ($unsigned && ($this->data[$this->offset + 7] & "\x80")) ? $this->readUnsigned64() : $this->readInt64();
-            case Client::MYSQL_TYPE_LONG:
-            case Client::MYSQL_TYPE_LONG | 0x80:
-            case Client::MYSQL_TYPE_INT24:
-            case Client::MYSQL_TYPE_INT24 | 0x80:
+            case Constants::MYSQL_TYPE_LONG:
+            case Constants::MYSQL_TYPE_LONG | 0x80:
+            case Constants::MYSQL_TYPE_INT24:
+            case Constants::MYSQL_TYPE_INT24 | 0x80:
                 $shift = PHP_INT_MAX >> 31 ? 32 : 0;
                 
                 return ($unsigned && ($this->data[$this->offset + 3] & "\x80")) ? $this->readUnsigned32() : (($this->readInt32() << $shift) >> $shift);
-            case Client::MYSQL_TYPE_TINY:
-            case Client::MYSQL_TYPE_TINY | 0x80:
+            case Constants::MYSQL_TYPE_TINY:
+            case Constants::MYSQL_TYPE_TINY | 0x80:
                 $shift = PHP_INT_MAX >> 31 ? 56 : 24;
                 
                 return $unsigned ? $this->readInt8() : (($this->readInt8() << $shift) >> $shift);
-            case Client::MYSQL_TYPE_DOUBLE:
+            case Constants::MYSQL_TYPE_DOUBLE:
                 try {
                     return \unpack('d', \substr($this->data, $this->offset))[1];
                 } finally {
                     $this->offset += 8;
                 }
-            case Client::MYSQL_TYPE_FLOAT:
+            case Constants::MYSQL_TYPE_FLOAT:
                 try {
                     return \unpack('f', \substr($this->data, $this->offset))[1];
                 } finally {
                     $this->offset += 4;
                 }
-            case Client::MYSQL_TYPE_NULL:
+            case Constants::MYSQL_TYPE_NULL:
                 return null;
         }
         

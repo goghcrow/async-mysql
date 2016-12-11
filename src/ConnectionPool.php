@@ -16,14 +16,14 @@ namespace KoolKode\Async\MySQL;
 use KoolKode\Async\Awaitable;
 use KoolKode\Async\AwaitPending;
 use KoolKode\Async\Coroutine;
+use KoolKode\Async\Deferred;
 use KoolKode\Async\Failure;
+use KoolKode\Async\MultiReasonException;
 use KoolKode\Async\Success;
 use KoolKode\Async\Transform;
 use KoolKode\Async\Util\Channel;
 use Psr\Log\LoggerAwareInterface;
 use Psr\Log\LoggerAwareTrait;
-use KoolKode\Async\Deferred;
-use KoolKode\Async\MultiReasonException;
 
 /**
  * MySQL connection pool.
@@ -69,7 +69,13 @@ class ConnectionPool implements LoggerAwareInterface
      */
     protected $factory;
 
-    public function __construct(ConnectionFactory $factory, int $size = 10, int $initialSize = 1)
+    /**
+     * Create a new MySQL connection pool.
+     * 
+     * @param ConnectionFactory $factory
+     * @param int $size Maximum pool size.
+     */
+    public function __construct(ConnectionFactory $factory, int $size = 10)
     {
         $this->factory = $factory;
         $this->size = $size;

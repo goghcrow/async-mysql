@@ -28,14 +28,6 @@ use KoolKode\Async\Util\Channel;
  */
 class Statement
 {
-    const CURSOR_TYPE_NO_CURSOR = 0x00;
-
-    const CURSOR_TYPE_READ_ONLY = 0x01;
-
-    const CURSOR_TYPE_FOR_UPDATE = 0x02;
-
-    const CURSOR_TYPE_SCROLLABLE = 0x04;
-
     /**
      * Original SQL query string.
      * 
@@ -351,7 +343,7 @@ class Statement
         $builder = new PacketBuilder();
         $builder->writeInt8(0x17);
         $builder->writeInt32($this->id);
-        $builder->writeInt8(self::CURSOR_TYPE_NO_CURSOR);
+        $builder->writeInt8(Constants::CURSOR_TYPE_NO_CURSOR);
         $builder->writeInt32(1);
         
         if (!empty($this->params)) {
@@ -470,7 +462,7 @@ class Statement
         
         switch (\gettype($val)) {
             case 'boolean':
-                $type = Client::MYSQL_TYPE_TINY;
+                $type = Constants::MYSQL_TYPE_TINY;
                 $builder->write($val ? "\x01" : "\x00");
                 break;
             case 'integer':
@@ -479,15 +471,15 @@ class Statement
                 }
                 
                 if ($val >= 0 && $val < (1 << 15)) {
-                    $type = Client::MYSQL_TYPE_SHORT;
+                    $type = Constants::MYSQL_TYPE_SHORT;
                     $builder->writeInt16($val);
                 } else {
-                    $type = Client::MYSQL_TYPE_LONGLONG;
+                    $type = Constants::MYSQL_TYPE_LONGLONG;
                     $builder->writeInt64($val);
                 }
                 break;
             case 'double':
-                $type = Client::MYSQL_TYPE_DOUBLE;
+                $type = Constants::MYSQL_TYPE_DOUBLE;
                 $value = \pack('d', $val);
                 
                 if ($this->isLittleEndian()) {
@@ -497,11 +489,11 @@ class Statement
                 $builder->write($value);
                 break;
             case 'string':
-                $type = Client::MYSQL_TYPE_LONG_BLOB;
+                $type = Constants::MYSQL_TYPE_LONG_BLOB;
                 $builder->writeLengthEncodedString($val);
                 break;
             case 'NULL':
-                $type = Client::MYSQL_TYPE_NULL;
+                $type = Constants::MYSQL_TYPE_NULL;
                 break;
             default:
                 throw new ProtocolError("Unexpected type for binding parameter: " . \gettype($val));
