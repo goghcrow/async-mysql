@@ -15,11 +15,11 @@ namespace KoolKode\Async\MySQL;
 
 use Psr\Log\LoggerInterface;
 use KoolKode\Async\Awaitable;
-use KoolKode\Async\Coroutine;
 use KoolKode\Async\Deferred;
 use KoolKode\Async\Failure;
 use KoolKode\Async\Success;
 use KoolKode\Async\Util\Channel;
+use KoolKode\Async\Util\Executor;
 
 /**
  * Prepared statement that encapsulates an SQL query.
@@ -94,6 +94,8 @@ class Statement
     protected $paramDefinitions = [];
     
     protected $result;
+    
+    protected $executor;
 
     public function __construct(string $sql, Client $client, LoggerInterface $logger = null)
     {
@@ -214,22 +216,29 @@ class Statement
             return new Failure(new \RuntimeException('Cannot execute a disposed statement'));
         }
         
-        if ($this->result) {
-            return new Failure(new \RuntimeException('Cannot execute a statement while fetching result rows'));
+        if ($this->executor === null) {
+            $this->executor = new Executor();
         }
         
-        $coroutine = null;
+        $job = null;
         
-        $defer = new Deferred(function ($defer, \Throwable $e) use (& $coroutine) {
-            $coroutine->cancel($e);
+        $defer = new Deferred(function ($defer, \Throwable $e) use (& $job) {
+            $job->cancel($e);
         });
         
-        $coroutine = new Coroutine(function () use ($defer) {
+        $job = $this->executor->execute(function () use ($defer) {
             try {
+                if ($this->result) {
+                    throw new \RuntimeException('Cannot execute a statement while fetching result rows');
+                }
+                
                 if ($this->id === null || $this->recompile) {
                     if ($this->id !== null) {
                         yield $this->dispose();
                     }
+                    
+                    $this->disposed = false;
+                    $this->recompile = false;
                     
                     yield $this->client->sendCommand(function (Client $client) {
                         return $this->prepareQuery($client);
@@ -238,7 +247,7 @@ class Statement
                 
                 return yield $this->client->sendCommand(function (Client $client) use ($defer) {
                     return $this->executeQuery($client, $defer);
-                }, false);
+                });
             } catch (\Throwable $e) {
                 $defer->cancel($e);
             }
@@ -291,7 +300,7 @@ class Statement
         $warningCount = $packet->readInt16();
         
         for ($i = 0; $i < $paramCount; $i++) {
-            $this->paramDefinitions[] = $this->parseColumnDefinition($client, yield from $client->readRawPacket());
+            $this->paramDefinitions[] = $this->parseColumnDefinition(yield from $client->readRawPacket());
         }
         
         if ($paramCount && !$client->isEofDeprecated()) {
@@ -299,7 +308,7 @@ class Statement
         }
         
         for ($i = 0; $i < $columnCount; $i++) {
-            $this->parseColumnDefinition($client, yield from $client->readRawPacket());
+            $this->parseColumnDefinition(yield from $client->readRawPacket());
         }
         
         if ($columnCount && !$client->isEofDeprecated()) {
@@ -307,7 +316,7 @@ class Statement
         }
     }
 
-    protected function parseColumnDefinition(Client $client, Packet $packet): array
+    protected function parseColumnDefinition(Packet $packet): array
     {
         $col = [
             'catalog' => $packet->readLengthEncodedString(),
@@ -373,7 +382,7 @@ class Statement
         $defs = [];
         
         for ($i = 0; $i < $columnCount; $i++) {
-            $defs[] = $this->parseColumnDefinition($client, yield from $client->readRawPacket());
+            $defs[] = $this->parseColumnDefinition(yield from $client->readRawPacket());
         }
         
         $names = \array_map(function (array $def) {
@@ -397,7 +406,11 @@ class Statement
                         break 2;
                 }
                 
-                yield $channel->send($this->parseRow($client, $packet, $columnCount, $names, $defs));
+                if ($this->disposed || $channel->isClosed()) {
+                    continue;
+                }
+                
+                yield $channel->send($this->parseRow($packet, $columnCount, $names, $defs));
             }
             
             $this->result = null;
@@ -506,7 +519,7 @@ class Statement
         ];
     }
 
-    protected function parseRow(Client $client, Packet $packet, int $columnCount, array $columnNames, array $defs): array
+    protected function parseRow(Packet $packet, int $columnCount, array $columnNames, array $defs): array
     {
         $row = $packet->readNullBitmap($columnCount);
         $i = 0;

@@ -16,6 +16,7 @@ namespace KoolKode\Async\MySQL;
 use KoolKode\Async\Awaitable;
 use KoolKode\Async\Coroutine;
 use KoolKode\Async\Success;
+use KoolKode\Async\Transform;
 use KoolKode\Async\Util\Channel;
 
 /**
@@ -104,6 +105,7 @@ class ResultSet
             try {
                 if (!$this->channel->isClosed()) {
                     $channel = $this->channel;
+                    $channel->close();
                     
                     new Coroutine(function () use ($channel) {
                         while (null !== yield $channel->receive());
@@ -152,6 +154,23 @@ class ResultSet
             }
             
             return $result;
+        });
+    }
+    
+    /**
+     * Fetch the next value of the given column.
+     * 
+     * @param string $alias
+     * @return mixed
+     */
+    public function fetchColumn(string $alias): Awaitable
+    {
+        if ($this->channel === null) {
+            return new Success(null);
+        }
+        
+        return new Transform($this->channel->receive(), function (array $row = null) use ($alias) {
+            return ($row === null) ? null : $row[$alias];
         });
     }
 

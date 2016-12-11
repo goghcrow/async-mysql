@@ -46,12 +46,11 @@ class SetupTest extends AsyncTestCase
         try {
 //             $this->assertGreaterThan(0, yield $conn->ping());
             
-            $stmt = $conn->prepare("SELECT * FROM customer WHERE id IN (?, ?) ORDER BY id");
+            $stmt = $conn->prepare("SELECT * FROM customer WHERE id > ? ORDER BY id");
             $this->assertInstanceOf(Statement::class, $stmt);
             
             try {
-                $stmt->bind(0, 2);
-                $stmt->bind(1, 1);
+                $stmt->bind(0, 1);
                 
                 $result = yield $stmt->execute();
                 $this->assertInstanceOf(ResultSet::class, $result);
@@ -59,14 +58,13 @@ class SetupTest extends AsyncTestCase
                 $rows1 = [];
                 
                 try {
-                    while ($row = yield $result->fetch()) {
-                        $rows1[] = $row;
-                    }
+                    $rows1[] = yield $result->fetch();
+                    $rows1[] = yield $result->fetch();
                 } finally {
                     $result->closeCursor();
                 }
                 
-                $rows2 = yield (yield $stmt->execute())->fetchArray();
+                $rows2 = yield (yield $stmt->limit(2)->execute())->fetchArray();
                 $this->assertEquals($rows1, $rows2);
             } finally {
                 $stmt->dispose();
