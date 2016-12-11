@@ -38,7 +38,7 @@ class SetupTest extends AsyncTestCase
         
         $factory = new ConnectionFactory($dsn, $username, $password);
         
-        $conn = new ConnectionPool($factory);
+        $pool = new ConnectionPool($factory);
         
 //         $conn = yield $factory->connect();
 //         $this->assertInstanceOf(Connection::class, $conn);
@@ -46,7 +46,7 @@ class SetupTest extends AsyncTestCase
         try {
 //             $this->assertGreaterThan(0, yield $conn->ping());
             
-            $stmt = $conn->prepare("SELECT * FROM customer WHERE id > ? ORDER BY id");
+            $stmt = $pool->prepare("SELECT * FROM customer WHERE id > ? ORDER BY id");
             $this->assertInstanceOf(Statement::class, $stmt);
             
             try {
@@ -70,7 +70,17 @@ class SetupTest extends AsyncTestCase
                 $stmt->dispose();
             }
             
-            $stmt = $conn->prepare("SELECT name FROM customer ORDER BY id");
+            $conn = yield $pool->checkout();
+            
+            try {
+                $this->assertEquals(5, yield $conn->insert('customer', [
+                    'name' => 'Hub'
+                ]));
+            } finally {
+                $conn->shutdown();
+            }
+            
+            $stmt = $pool->prepare("SELECT name FROM customer ORDER BY id");
             
             try {
                 $result = yield $stmt->limit(2)->offset(1)->execute();
@@ -79,7 +89,7 @@ class SetupTest extends AsyncTestCase
                 yield $stmt->dispose();
             }
         } finally {
-            $conn->shutdown();
+            $pool->shutdown();
         }
     }
 }

@@ -14,8 +14,14 @@ declare(strict_types = 1);
 namespace KoolKode\Async\MySQL;
 
 use KoolKode\Async\Awaitable;
+use KoolKode\Async\Success;
 use Psr\Log\LoggerInterface;
 
+/**
+ * Connection backed by a pooled MySQL client.
+ * 
+ * @author Martin Schröder
+ */
 class PooledConnection extends Connection
 {
     protected $disposer;
@@ -29,16 +35,12 @@ class PooledConnection extends Connection
 
     public function shutdown(\Throwable $e = null): Awaitable
     {
-        if ($this->disposed) {
-            return parent::shutdown($e);
+        if (!$this->disposed) {
+            $this->disposed = true;
+            
+            ($this->disposer)($this->client);
         }
         
-        $promise = parent::shutdown($e);
-        
-        $promise->when(function () {
-            ($this->disposer)($this->client);
-        });
-        
-        return $promise;
+        return new Success(null);
     }
 }

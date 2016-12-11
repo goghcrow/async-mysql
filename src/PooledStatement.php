@@ -16,6 +16,11 @@ namespace KoolKode\Async\MySQL;
 use KoolKode\Async\Awaitable;
 use KoolKode\Async\Coroutine;
 
+/**
+ * Prepared statement that will be executed using a pooled MySQL client.
+ * 
+ * @author Martin Schröder
+ */
 class PooledStatement extends Statement
 {
     protected $connector;
