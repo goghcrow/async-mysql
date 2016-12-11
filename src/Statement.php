@@ -204,6 +204,23 @@ class Statement
         
         return $this;
     }
+    
+    /**
+     * Bin all given params at once.
+     * 
+     * @param array $params
+     * @return Statement
+     * 
+     * @throws \InvalidArgumentException When a param index is negative.
+     */
+    public function bindAll(array $params): Statement
+    {
+        foreach ($params as $k => $v) {
+            $this->bind($k, $v);
+        }
+        
+        return $this;
+    }
 
     /**
      * Execute the prepared statement.
@@ -367,6 +384,8 @@ class Statement
             case 0x00:
             case 0xFE:
                 if ($packet->getLength() < 9) {
+                    $packet->discardByte();
+                    
                     $affected = $packet->readLengthEncodedInt();
                     $insertId = $packet->readLengthEncodedInt();
                     
