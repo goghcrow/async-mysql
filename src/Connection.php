@@ -14,6 +14,7 @@ declare(strict_types = 1);
 namespace KoolKode\Async\MySQL;
 
 use KoolKode\Async\Awaitable;
+use KoolKode\Async\Coroutine;
 use KoolKode\Async\Failure;
 use KoolKode\Async\Success;
 use Psr\Log\LoggerInterface;
@@ -66,6 +67,100 @@ class Connection
         }
         
         return new Success(null);
+    }
+    
+    public function quote(string $identifier): string
+    {
+        return '`' . \str_replace('`', '``', $identifier) . '`';
+    }
+    
+    public function insert(string $table, array $values): Awaitable
+    {
+        return new Coroutine(function () use ($table, $values) {
+            $sql = 'INSERT INTO ' . $this->quote($table) . ' (';
+            $params = [];
+            
+            foreach ($values as $k => $v) {
+                if ($params) {
+                    $sql . ', ';
+                }
+                
+                $sql .= $this->quote($k);
+                $params[] = $v;
+            }
+            
+            $sql .= ') VALUES (' . \implode(', ', \array_fill(0, \count($params), '?')) . ')';
+            
+            $stmt = $this->prepare($sql);
+            
+            try {
+                return (yield $stmt->bindAll($params)->execute())->lastInsertId();
+            } finally {
+                $stmt->dispose();
+            }
+        });
+    }
+    
+    public function update(string $table, array $identity, array $values): Awaitable
+    {
+        return new Coroutine(function () use ($table, $identity, $values) {
+            $sql = 'UPDATE ' . $this->quote($table) . ' SET ';
+            $params = [];
+            
+            foreach ($values as $k => $v) {
+                if ($params) {
+                    $sql .= ', ';
+                }
+                
+                $sql .= $this->quote($k) . ' = ?';
+                $params[] = $v;
+            }
+            
+            $sql .= ' WHERE ';
+            $i = 0;
+            
+            foreach ($identity as $k => $v) {
+                if ($i++) {
+                    $sql .= ', ';
+                }
+                
+                $sql .= $this->quote($k) . ' = ?';
+                $params[] = $v;
+            }
+            
+            $stmt = $this->prepare($sql);
+            
+            try {
+                return (yield $stmt->bindAll($params)->execute())->affectedRows();
+            } finally {
+                $stmt->dispose();
+            }
+        });
+    }
+    
+    public function delete(string $table, array $identity): Awaitable
+    {
+        return new Coroutine(function () use ($table, $identity) {
+            $sql = 'DELETE FROM ' . $this->quote($table) . ' WHERE ';
+            $params = [];
+            
+            foreach ($identity as $k => $v) {
+                if ($params) {
+                    $sql .= ', ';
+                }
+                
+                $sql .= $this->quote($k) . ' = ?';
+                $params[] = $v;
+            }
+            
+            $stmt = $this->prepare($sql);
+            
+            try {
+                return (yield $stmt->bindAll($params)->execute())->affectedRows();
+            } finally {
+                $stmt->dispose();
+            }
+        });
     }
 
     /**
