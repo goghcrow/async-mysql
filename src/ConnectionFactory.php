@@ -75,7 +75,7 @@ class ConnectionFactory implements LoggerAwareInterface
     /**
      * Establish a new connection to a MySQL server.
      * 
-     * @return Connection
+     * @return MySqlConnection
      */
     public function connect(): Awaitable
     {
@@ -85,7 +85,7 @@ class ConnectionFactory implements LoggerAwareInterface
     /**
      * Create a new connected MySQL client.
      *
-     * @return Connection
+     * @return Client
      */
     public function connectClient(): Awaitable
     {
