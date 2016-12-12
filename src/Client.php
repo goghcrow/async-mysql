@@ -160,6 +160,8 @@ class Client
         try {
             list ($auth, $authPlugin) = yield from $this->readAuthChallenge();
             
+            $this->capabilities = $this->clientCaps & $this->serverCaps;
+            
             $packet = $this->createAuthPacket($username, $password, $auth, $authPlugin);
             
             yield from $this->sendPacket($packet);
@@ -222,8 +224,6 @@ class Client
 
     protected function createAuthPacket(string $username, string $password, string $auth, string $authPlugin): string
     {
-        $this->capabilities = $this->clientCaps & $this->serverCaps;
-        
         $builder = new PacketBuilder();
         $builder->writeInt32($this->capabilities);
         $builder->writeInt32(1 << 24 - 1);
@@ -234,7 +234,18 @@ class Client
         if ($password === '') {
             $credentials = '';
         } else {
-            $credentials = $this->secureAuth($password, $auth);
+            // TODO: Implement support for sha256_password authentication.
+            
+            switch ($authPlugin) {
+                case 'mysql_native_password':
+                    $credentials = $this->secureAuth($password, $auth);
+                    break;
+                case 'mysql_clear_password':
+                    $credentials = $password;
+                    break;
+                default:
+                    throw new \RuntimeException(\sprintf('Unsupported authentication plugin: "%s"', $authPlugin));
+            }
         }
         
         if ($this->capabilities & Constants::CLIENT_PLUGIN_AUTH_LENENC_CLIENT_DATA) {
