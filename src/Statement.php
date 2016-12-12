@@ -462,9 +462,7 @@ class Statement
             $val = $this->params[$i];
             
             if ($val === null) {
-                // Set NULL bit at param position to 1:
-                $off = ($i >> 3);
-                $mask[$off] |= \chr(1 << ($i % 8));
+                $mask[$i >> 3] |= \chr(1 << ($i % 8));
             } else {
                 $bound = true;
             }
