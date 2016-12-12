@@ -139,18 +139,24 @@ class MySqlResultSet implements ResultSet
             return $result;
         });
     }
-    
+
     /**
      * {@inheritdoc}
      */
-    public function fetchColumn(string $alias): Promise
+    public function fetchColumn(string $alias, bool & $eof): Promise
     {
         if ($this->channel === null) {
+            $eof = true;
+            
             return new Success(null);
         }
         
-        return new Transform($this->channel->receive(), function (array $row = null) use ($alias) {
-            return ($row === null) ? null : $row[$alias];
+        return new Transform($this->channel->receive(), function (array $row = null) use ($alias, & $eof) {
+            if ($row === null) {
+                $eof = true;
+            } else {
+                return $row[$alias];
+            }
         });
     }
 
