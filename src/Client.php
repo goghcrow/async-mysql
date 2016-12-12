@@ -15,9 +15,9 @@ namespace KoolKode\Async\MySQL;
 
 use KoolKode\Async\Awaitable;
 use KoolKode\Async\Socket\SocketStream;
+use KoolKode\Async\Success;
 use KoolKode\Async\Util\Executor;
 use Psr\Log\LoggerInterface;
-use KoolKode\Async\Success;
 
 /**
  * Client that synchronizes access to a MySQL DB.

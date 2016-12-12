@@ -143,6 +143,7 @@ class ConnectionFactory implements LoggerAwareInterface
             $client = new Client($socket, $this->logger);
             
             yield from $client->handshake($this->username, $this->password);
+            yield $this->switchToUnicode($client);
             
             if (isset($this->settings['dbname'])) {
                 yield $this->switchDefaultDatabase($client);
@@ -154,6 +155,18 @@ class ConnectionFactory implements LoggerAwareInterface
         }
         
         return $wrap ? new Connection($client, $this->logger) : $client;
+    }
+
+    protected function switchToUnicode(Client $client): Awaitable
+    {
+        return $client->sendCommand(function (Client $client) {
+            $builder = new PacketBuilder();
+            $builder->writeInt8(0x03);
+            $builder->write("SET NAMES 'utf8'");
+            
+            yield from $client->sendPacket($builder->build());
+            yield from $client->readPacket(0x00, 0xFE);
+        });
     }
 
     protected function switchDefaultDatabase(Client $client): Awaitable
