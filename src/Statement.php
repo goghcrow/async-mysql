@@ -387,11 +387,9 @@ class Statement
             case 0xFE:
                 if ($packet->getLength() < 9) {
                     $packet->discardByte();
+                    $state = $client->parseOk($packet);
                     
-                    $affected = $packet->readLengthEncodedInt();
-                    $insertId = $packet->readLengthEncodedInt();
-                    
-                    return $defer->resolve(new ResultSet($affected, $insertId));
+                    return $defer->resolve(new ResultSet($state['affected'], $state['lastId']));
                 }
                 
                 break;

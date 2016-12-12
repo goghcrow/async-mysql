@@ -184,6 +184,8 @@ class ConnectionPool implements LoggerAwareInterface
                 $client->shutdown();
             } elseif ($client->isDisposed()) {
                 $this->active--;
+            } elseif ($client->isWithinTransaction()) {
+                $this->handleUnterminatedTransaction($client);
             } else {
                 $this->clients->send($client);
             }
@@ -220,9 +222,23 @@ class ConnectionPool implements LoggerAwareInterface
                 $client->shutdown($e);
             } elseif ($client->isDisposed()) {
                 $this->active--;
+            } elseif ($client->isWithinTransaction()) {
+                $this->handleUnterminatedTransaction($client);
             } else {
                 $this->clients->send($client);
             }
         }, $this->logger);
+    }
+
+    protected function handleUnterminatedTransaction(Client $client)
+    {
+        $client->sendCommand(function () {})->when(function ($e) use ($client) {
+            if ($e || $client->isWithinTransaction()) {
+                $this->active--;
+                $client->shutdown();
+            } else {
+                $this->clients->send($client);
+            }
+        });
     }
 }

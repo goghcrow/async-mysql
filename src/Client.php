@@ -46,7 +46,7 @@ class Client
      * @var int
      */
     protected $sequence = -1;
-    
+
     /**
      * Has the client been disposed yet?
      * 
@@ -95,13 +95,20 @@ class Client
      * @var Executor
      */
     protected $executor;
-    
+
     /**
      * PSR logger instance.
      * 
      * @var LoggerInterface
      */
     protected $logger;
+
+    /**
+     * Has a transaction been started?
+     * 
+     * @var bool
+     */
+    protected $transaction = false;
 
     public function __construct(SocketStream $socket, LoggerInterface $logger = null)
     {
@@ -115,15 +122,18 @@ class Client
         $this->clientCaps |= Constants::CLIENT_PROTOCOL_41;
         $this->clientCaps |= Constants::CLIENT_DEPRECATE_EOF;
         $this->clientCaps |= Constants::CLIENT_SECURE_CONNECTION;
-        $this->clientCaps |= Constants::CLIENT_MULTI_RESULTS;
-        $this->clientCaps |= Constants::CLIENT_MULTI_STATEMENTS;
         $this->clientCaps |= Constants::CLIENT_PLUGIN_AUTH;
         $this->clientCaps |= Constants::CLIENT_PLUGIN_AUTH_LENENC_CLIENT_DATA;
     }
-    
+
     public function isDisposed(): bool
     {
         return $this->disposed;
+    }
+
+    public function isWithinTransaction(): bool
+    {
+        return $this->transaction;
     }
 
     public function shutdown(\Throwable $e = null): Awaitable
@@ -293,7 +303,7 @@ class Client
         
         return $packet;
     }
-    
+
     public function populateError(Packet $packet): \Throwable
     {
         $code = $packet->readInt16();
@@ -304,6 +314,40 @@ class Client
         return new \RuntimeException(\sprintf('SQLSTATE [%s]: "%s"', $state, $message), $code);
     }
 
+    public function parseOk(Packet $packet): array
+    {
+        $affected = $packet->readLengthEncodedInt();
+        $lastId = $packet->readLengthEncodedInt();
+        
+        if ($this->capabilities & Constants::CLIENT_PROTOCOL_41) {
+            $status = $packet->readInt16();
+            $warnings = $packet->readInt16();
+        } elseif ($this->capabilities & Constants::CLIENT_TRANSACTIONS) {
+            $status = $packet->readInt16();
+        }
+        
+        if ($this->capabilities & Constants::CLIENT_SESSION_TRACK) {
+            $info = $packet->readLengthEncodedString();
+            
+            if ($status & Constants::SERVER_SESSION_STATE_CHANGED) {
+                $changes = $packet->readLengthEncodedString();
+            }
+        } else {
+            $info = $packet->readEofString();
+        }
+        
+        $packet->reset();
+        
+        return [
+            'affected' => $affected,
+            'lastId' => $lastId,
+            'status' => $status ?? 0,
+            'warnings' => $warnings ?? 0,
+            'info' => $info,
+            'changes' => $changes ?? ''
+        ];
+    }
+    
     public function sendCommand(callable $callback): Awaitable
     {
         return $this->executor->execute(function () use ($callback) {
@@ -326,5 +370,95 @@ class Client
         $packet = \substr(\pack('V', \strlen($packet)), 0, 3) . \chr(++$this->sequence % 256) . $packet;
         
         return yield $this->socket->write($packet);
+    }
+
+    public function beginTransaction(bool $readOnly): Awaitable
+    {
+        return $this->sendCommand(function () use ($readOnly) {
+            if ($this->transaction) {
+                throw new \RuntimeException('Cannot start transaction while another transaction is active');
+            }
+            
+            $sql = 'START TRANSACTION';
+            
+            if ($readOnly) {
+                $sql .= ' READ ONLY';
+            }
+            
+            $packet = new PacketBuilder();
+            $packet->writeInt8(0x03);
+            $packet->write($sql);
+            
+            try {
+                yield from $this->sendPacket($packet->build());
+                $state = $this->parseOk(yield from $this->readPacket(0x00, 0xFE));
+                
+                if (!($state['status'] & Constants::SERVER_STATUS_IN_TRANS)) {
+                    throw new \RuntimeException('Failed to start transaction');
+                }
+            } catch (\Throwable $e) {
+                $this->shutdown($e);
+                
+                throw $e;
+            }
+            
+            $this->transaction = true;
+        });
+    }
+
+    public function commit(): Awaitable
+    {
+        return $this->sendCommand(function () {
+            if (!$this->transaction) {
+                throw new \RuntimeException('Cannot commit when not within a transaction');
+            }
+            
+            $packet = new PacketBuilder();
+            $packet->writeInt8(0x03);
+            $packet->write('COMMIT');
+            
+            try {
+                yield from $this->sendPacket($packet->build());
+                $state = $this->parseOk(yield from $this->readPacket(0x00, 0xFE));
+                
+                if ($state['status'] & Constants::SERVER_STATUS_IN_TRANS) {
+                    throw new \RuntimeException('Failed to terminate transaction');
+                }
+            } catch (\Throwable $e) {
+                $this->shutdown($e);
+                
+                throw $e;
+            }
+            
+            $this->transaction = false;
+        });
+    }
+
+    public function rollBack(): Awaitable
+    {
+        return $this->sendCommand(function () {
+            if (!$this->transaction) {
+                throw new \RuntimeException('Cannot roll back when not within a transaction');
+            }
+            
+            $packet = new PacketBuilder();
+            $packet->writeInt8(0x03);
+            $packet->write('ROLLBACK');
+            
+            try {
+                yield from $this->sendPacket($packet->build());
+                $state = $this->parseOk(yield from $this->readPacket(0x00, 0xFE));
+                
+                if ($state['status'] & Constants::SERVER_STATUS_IN_TRANS) {
+                    throw new \RuntimeException('Failed to terminate transaction');
+                }
+            } catch (\Throwable $e) {
+                $this->shutdown($e);
+                
+                throw $e;
+            }
+            
+            $this->transaction = false;
+        });
     }
 }
