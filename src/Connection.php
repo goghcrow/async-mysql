@@ -69,7 +69,7 @@ class Connection
         return new Success(null);
     }
     
-    public function quote(string $identifier): string
+    public function quoteIdentifier(string $identifier): string
     {
         return '`' . \str_replace('`', '``', $identifier) . '`';
     }
@@ -77,7 +77,7 @@ class Connection
     public function insert(string $table, array $values): Awaitable
     {
         return new Coroutine(function () use ($table, $values) {
-            $sql = 'INSERT INTO ' . $this->quote($table) . ' (';
+            $sql = 'INSERT INTO ' . $this->quoteIdentifier($table) . ' (';
             $params = [];
             
             foreach ($values as $k => $v) {
@@ -85,7 +85,7 @@ class Connection
                     $sql . ', ';
                 }
                 
-                $sql .= $this->quote($k);
+                $sql .= $this->quoteIdentifier($k);
                 $params[] = $v;
             }
             
@@ -104,7 +104,7 @@ class Connection
     public function update(string $table, array $identity, array $values): Awaitable
     {
         return new Coroutine(function () use ($table, $identity, $values) {
-            $sql = 'UPDATE ' . $this->quote($table) . ' SET ';
+            $sql = 'UPDATE ' . $this->quoteIdentifier($table) . ' SET ';
             $params = [];
             
             foreach ($values as $k => $v) {
@@ -112,7 +112,7 @@ class Connection
                     $sql .= ', ';
                 }
                 
-                $sql .= $this->quote($k) . ' = ?';
+                $sql .= $this->quoteIdentifier($k) . ' = ?';
                 $params[] = $v;
             }
             
@@ -124,7 +124,7 @@ class Connection
                     $sql .= ', ';
                 }
                 
-                $sql .= $this->quote($k) . ' = ?';
+                $sql .= $this->quoteIdentifier($k) . ' = ?';
                 $params[] = $v;
             }
             
@@ -141,7 +141,7 @@ class Connection
     public function delete(string $table, array $identity): Awaitable
     {
         return new Coroutine(function () use ($table, $identity) {
-            $sql = 'DELETE FROM ' . $this->quote($table) . ' WHERE ';
+            $sql = 'DELETE FROM ' . $this->quoteIdentifier($table) . ' WHERE ';
             $params = [];
             
             foreach ($identity as $k => $v) {
@@ -149,7 +149,7 @@ class Connection
                     $sql .= ', ';
                 }
                 
-                $sql .= $this->quote($k) . ' = ?';
+                $sql .= $this->quoteIdentifier($k) . ' = ?';
                 $params[] = $v;
             }
             
