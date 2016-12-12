@@ -13,7 +13,7 @@ declare(strict_types = 1);
 
 namespace KoolKode\Async\MySQL;
 
-use KoolKode\Async\Awaitable;
+use Interop\Async\Promise;
 use KoolKode\Async\Database\Connection;
 use KoolKode\Async\Database\Statement;
 use KoolKode\Async\Coroutine;
@@ -60,7 +60,7 @@ class MySqlConnection implements Connection
      * 
      * @param \Throwable $e Optional cause of shutdown.
      */
-    public function shutdown(\Throwable $e = null): Awaitable
+    public function shutdown(\Throwable $e = null): Promise
     {
         if (!$this->disposed) {
             $this->disposed = true;
@@ -76,7 +76,7 @@ class MySqlConnection implements Connection
         return '`' . \str_replace('`', '``', $identifier) . '`';
     }
     
-    public function insert(string $table, array $values): Awaitable
+    public function insert(string $table, array $values): Promise
     {
         return new Coroutine(function () use ($table, $values) {
             $sql = 'INSERT INTO ' . $this->quoteIdentifier($table) . ' (';
@@ -103,7 +103,7 @@ class MySqlConnection implements Connection
         });
     }
     
-    public function update(string $table, array $identity, array $values): Awaitable
+    public function update(string $table, array $identity, array $values): Promise
     {
         return new Coroutine(function () use ($table, $identity, $values) {
             $sql = 'UPDATE ' . $this->quoteIdentifier($table) . ' SET ';
@@ -140,7 +140,7 @@ class MySqlConnection implements Connection
         });
     }
     
-    public function delete(string $table, array $identity): Awaitable
+    public function delete(string $table, array $identity): Promise
     {
         return new Coroutine(function () use ($table, $identity) {
             $sql = 'DELETE FROM ' . $this->quoteIdentifier($table) . ' WHERE ';
@@ -170,7 +170,7 @@ class MySqlConnection implements Connection
      * 
      * @return int Number of milliseconds needed to send ping packets back and forth.
      */
-    public function ping(): Awaitable
+    public function ping(): Promise
     {
         if ($this->disposed) {
             return new Failure(new \RuntimeException('Cannot ping a disposed connection'));
@@ -210,17 +210,17 @@ class MySqlConnection implements Connection
         return new MySqlStatement($sql, $this->client, $this->logger);
     }
 
-    public function beginTransaction(bool $readOnly = false): Awaitable
+    public function beginTransaction(bool $readOnly = false): Promise
     {
         return $this->client->beginTransaction($readOnly);
     }
 
-    public function commit(): Awaitable
+    public function commit(): Promise
     {
         return $this->client->commit();
     }
 
-    public function rollBack(): Awaitable
+    public function rollBack(): Promise
     {
         return $this->client->rollBack();
     }

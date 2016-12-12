@@ -13,7 +13,7 @@ declare(strict_types = 1);
 
 namespace KoolKode\Async\MySQL;
 
-use KoolKode\Async\Awaitable;
+use Interop\Async\Promise;
 use KoolKode\Async\Database\Statement;
 use KoolKode\Async\Deferred;
 use KoolKode\Async\Failure;
@@ -128,7 +128,7 @@ class MySqlStatement implements Statement
     /**
      * Dispose of the prepared statement.
      */
-    public function dispose(): Awaitable
+    public function dispose(): Promise
     {
         if ($this->disposed) {
             return new Success(null);
@@ -243,7 +243,7 @@ class MySqlStatement implements Statement
      * 
      * @return ResultSet
      */
-    public function execute(): Awaitable
+    public function execute(): Promise
     {
         if ($this->disposed) {
             return new Failure(new \RuntimeException('Cannot execute a disposed statement'));

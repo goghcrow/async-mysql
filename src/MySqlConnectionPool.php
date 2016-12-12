@@ -13,7 +13,7 @@ declare(strict_types = 1);
 
 namespace KoolKode\Async\MySQL;
 
-use KoolKode\Async\Awaitable;
+use Interop\Async\Promise;
 use KoolKode\Async\AwaitPending;
 use KoolKode\Async\Coroutine;
 use KoolKode\Async\Database\Connection;
@@ -96,7 +96,7 @@ class MySqlConnectionPool implements ConnectionPool, LoggerAwareInterface
         ];
     }
 
-    public function shutdown(\Throwable $e = null): Awaitable
+    public function shutdown(\Throwable $e = null): Promise
     {
         if ($this->disposed) {
             return new Success(null);
@@ -120,7 +120,7 @@ class MySqlConnectionPool implements ConnectionPool, LoggerAwareInterface
         });
     }
 
-    public function initialize(int $size): Awaitable
+    public function initialize(int $size): Promise
     {
         $defer = new Deferred();
         $promises = [];
@@ -160,7 +160,7 @@ class MySqlConnectionPool implements ConnectionPool, LoggerAwareInterface
         return $defer;
     }
 
-    public function checkout(): Awaitable
+    public function checkout(): Promise
     {
         if ($this->disposed) {
             return new Failure(new \RuntimeException('Cannot checkout connection from disposed pool'));

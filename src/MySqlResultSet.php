@@ -13,7 +13,7 @@ declare(strict_types = 1);
 
 namespace KoolKode\Async\MySQL;
 
-use KoolKode\Async\Awaitable;
+use Interop\Async\Promise;
 use KoolKode\Async\Coroutine;
 use KoolKode\Async\Database\ResultSet;
 use KoolKode\Async\Success;
@@ -84,23 +84,13 @@ class MySqlResultSet implements ResultSet
     {
         return $this->lastInsertId;
     }
-
-    /**
-     * Access all result rows using the underlying channel.
-     * 
-     * @return Channel
-     */
-    public function channel(): Channel
-    {
-        return $this->channel ?? Channel::fromArray([]);
-    }
-
+    
     /**
      * Close the cursor of this result.
      * 
      * Allways call this method to free the DB connection if you do not fetch all rows from the result.
      */
-    public function closeCursor()
+    public function closeCursor(): Promise
     {
         if ($this->channel !== null) {
             try {
@@ -108,7 +98,7 @@ class MySqlResultSet implements ResultSet
                     $channel = $this->channel;
                     $channel->close();
                     
-                    new Coroutine(function () use ($channel) {
+                    return new Coroutine(function () use ($channel) {
                         while (null !== yield $channel->receive());
                     });
                 }
@@ -116,6 +106,8 @@ class MySqlResultSet implements ResultSet
                 $this->channel = null;
             }
         }
+        
+        return new Success(null);
     }
 
     /**
@@ -123,7 +115,7 @@ class MySqlResultSet implements ResultSet
      * 
      * @return array or NULL when no more rows are available.
      */
-    public function fetch(): Awaitable
+    public function fetch(): Promise
     {
         if ($this->channel === null) {
             return new Success(null);
@@ -137,7 +129,7 @@ class MySqlResultSet implements ResultSet
      * 
      * @return array
      */
-    public function fetchArray(): Awaitable
+    public function fetchArray(): Promise
     {
         if ($this->channel === null) {
             return new Success([]);
@@ -164,7 +156,7 @@ class MySqlResultSet implements ResultSet
      * @param string $alias
      * @return mixed
      */
-    public function fetchColumn(string $alias): Awaitable
+    public function fetchColumn(string $alias): Promise
     {
         if ($this->channel === null) {
             return new Success(null);
@@ -181,7 +173,7 @@ class MySqlResultSet implements ResultSet
      * @param string $alias
      * @return array
      */
-    public function fetchColumnArray(string $alias): Awaitable
+    public function fetchColumnArray(string $alias): Promise
     {
         if ($this->channel === null) {
             return new Success([]);

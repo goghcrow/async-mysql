@@ -13,7 +13,7 @@ declare(strict_types = 1);
 
 namespace KoolKode\Async\MySQL;
 
-use KoolKode\Async\Awaitable;
+use Interop\Async\Promise;
 use KoolKode\Async\Success;
 use Psr\Log\LoggerInterface;
 
@@ -33,7 +33,7 @@ class PooledConnection extends MySqlConnection
         $this->disposer = $disposer;
     }
 
-    public function shutdown(\Throwable $e = null): Awaitable
+    public function shutdown(\Throwable $e = null): Promise
     {
         if (!$this->disposed) {
             $this->disposed = true;

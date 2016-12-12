@@ -13,7 +13,7 @@ declare(strict_types = 1);
 
 namespace KoolKode\Async\MySQL;
 
-use KoolKode\Async\Awaitable;
+use Interop\Async\Promise;
 use KoolKode\Async\Coroutine;
 
 /**
@@ -35,7 +35,7 @@ class PooledStatement extends MySqlStatement
         $this->logger = $logger;
     }
     
-    public function dispose(): Awaitable
+    public function dispose(): Promise
     {
         if ($this->disposed) {
             return parent::dispose();
@@ -52,7 +52,7 @@ class PooledStatement extends MySqlStatement
         return $promise;
     }
 
-    public function execute(): Awaitable
+    public function execute(): Promise
     {
         return new Coroutine(function () {
             if ($this->client === null) {
