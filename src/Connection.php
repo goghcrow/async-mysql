@@ -180,8 +180,14 @@ class Connection
             
             $time = \microtime(true) * 1000;
             
-            yield from $client->sendPacket($builder->build());
-            yield from $client->readPacket(0x00);
+            try {
+                yield from $client->sendPacket($builder->build());
+                yield from $client->readPacket(0x00);
+            } catch (\Throwable $e) {
+                $this->shutdown($e);
+                
+                throw $e;
+            }
             
             return (int) \ceil((\microtime(true) * 1000 - $time) + .5);
         });

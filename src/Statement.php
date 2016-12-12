@@ -63,6 +63,11 @@ class Statement
      */
     protected $recompile = false;
     
+    /**
+     * Has the statement been disposed yet?
+     * 
+     * @var bool
+     */
     protected $disposed = false;
     
     /**
@@ -93,8 +98,18 @@ class Statement
      */
     protected $paramDefinitions = [];
     
+    /**
+     * Current result set.
+     * 
+     * @var ResultSet
+     */
     protected $result;
     
+    /**
+     * Executor being used to synchronize statement execution.
+     * 
+     * @var Executor
+     */
     protected $executor;
 
     public function __construct(string $sql, Client $client, LoggerInterface $logger = null)
@@ -266,6 +281,9 @@ class Statement
                     return $this->executeQuery($client, $defer);
                 });
             } catch (\Throwable $e) {
+                $this->disposed = true;
+                $this->client->shutdown($e);
+                
                 $defer->cancel($e);
             }
         });

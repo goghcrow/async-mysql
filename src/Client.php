@@ -17,6 +17,7 @@ use KoolKode\Async\Awaitable;
 use KoolKode\Async\Socket\SocketStream;
 use KoolKode\Async\Util\Executor;
 use Psr\Log\LoggerInterface;
+use KoolKode\Async\Success;
 
 /**
  * Client that synchronizes access to a MySQL DB.
@@ -45,6 +46,13 @@ class Client
      * @var int
      */
     protected $sequence = -1;
+    
+    /**
+     * Has the client been disposed yet?
+     * 
+     * @var bool
+     */
+    protected $disposed = false;
 
     /**
      * Informal data returned by the DB server.
@@ -112,9 +120,20 @@ class Client
         $this->clientCaps |= Constants::CLIENT_PLUGIN_AUTH;
         $this->clientCaps |= Constants::CLIENT_PLUGIN_AUTH_LENENC_CLIENT_DATA;
     }
+    
+    public function isDisposed(): bool
+    {
+        return $this->disposed;
+    }
 
     public function shutdown(\Throwable $e = null): Awaitable
     {
+        if ($this->disposed) {
+            return new Success(null);
+        }
+        
+        $this->disposed = true;
+        
         if ($e) {
             $this->executor->cancel($e);
             

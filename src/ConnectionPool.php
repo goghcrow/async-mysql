@@ -128,7 +128,7 @@ class ConnectionPool implements LoggerAwareInterface
             $promise = $promises[] = $this->factory->connectClient();
             
             $promise->when(function (\Throwable $e = null, Client $client = null) {
-                if ($client) {
+                if ($client && !$client->isDisposed()) {
                     $this->clients->send($client);
                 } else {
                     $this->active--;
@@ -182,6 +182,8 @@ class ConnectionPool implements LoggerAwareInterface
             if ($this->disposed) {
                 $this->active--;
                 $client->shutdown();
+            } elseif ($client->isDisposed()) {
+                $this->active--;
             } else {
                 $this->clients->send($client);
             }
@@ -216,6 +218,8 @@ class ConnectionPool implements LoggerAwareInterface
             if ($e || $this->disposed) {
                 $this->active--;
                 $client->shutdown($e);
+            } elseif ($client->isDisposed()) {
+                $this->active--;
             } else {
                 $this->clients->send($client);
             }
