@@ -11,6 +11,10 @@
 
 namespace KoolKode\Async\MySQL;
 
+use KoolKode\Async\Database\Connection;
+use KoolKode\Async\Database\ConnectionPool;
+use KoolKode\Async\Database\ResultSet;
+use KoolKode\Async\Database\Statement;
 use KoolKode\Async\Test\AsyncTestCase;
 
 class SetupTest extends AsyncTestCase
@@ -36,7 +40,8 @@ class SetupTest extends AsyncTestCase
         
         $pdo->exec("INSERT INTO customer (name) VALUES ('KoolKode'), ('Async'), ('MySQL'), ('Git')");
         
-        $pool = new ConnectionPool(new ConnectionFactory($dsn, $username, $password));
+        $pool = new MySqlConnectionPool(new ConnectionFactory($dsn, $username, $password));
+        $this->assertInstanceOf(ConnectionPool::class, $pool);
         
         try {
             $stmt = $pool->prepare("SELECT * FROM customer WHERE id > ? ORDER BY id");
@@ -64,6 +69,8 @@ class SetupTest extends AsyncTestCase
             }
             
             $conn = yield $pool->checkout();
+            $this->assertInstanceOf(Connection::class, $conn);
+            
             yield $conn->beginTransaction();
             
             try {

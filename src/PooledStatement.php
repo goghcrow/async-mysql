@@ -21,7 +21,7 @@ use KoolKode\Async\Coroutine;
  * 
  * @author Martin Schröder
  */
-class PooledStatement extends Statement
+class PooledStatement extends MySqlStatement
 {
     protected $connector;
     

@@ -22,7 +22,7 @@ use Psr\Log\LoggerInterface;
  * 
  * @author Martin Schröder
  */
-class PooledConnection extends Connection
+class PooledConnection extends MySqlConnection
 {
     protected $disposer;
     

@@ -16,6 +16,9 @@ namespace KoolKode\Async\MySQL;
 use KoolKode\Async\Awaitable;
 use KoolKode\Async\AwaitPending;
 use KoolKode\Async\Coroutine;
+use KoolKode\Async\Database\Connection;
+use KoolKode\Async\Database\ConnectionPool;
+use KoolKode\Async\Database\Statement;
 use KoolKode\Async\Deferred;
 use KoolKode\Async\Failure;
 use KoolKode\Async\MultiReasonException;
@@ -30,7 +33,7 @@ use Psr\Log\LoggerAwareTrait;
  * 
  * @author Martin Schröder
  */
-class ConnectionPool implements LoggerAwareInterface
+class MySqlConnectionPool implements ConnectionPool, LoggerAwareInterface
 {
     use LoggerAwareTrait;
 
@@ -198,7 +201,7 @@ class ConnectionPool implements LoggerAwareInterface
      * @param string $sql
      * @return PooledStatement
      */
-    public function prepare(string $sql): PooledStatement
+    public function prepare(string $sql): Statement
     {
         if ($this->disposed) {
             throw new \RuntimeException('Cannot prepare statement using a disposed connection pool');

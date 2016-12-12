@@ -14,6 +14,8 @@ declare(strict_types = 1);
 namespace KoolKode\Async\MySQL;
 
 use KoolKode\Async\Awaitable;
+use KoolKode\Async\Database\Connection;
+use KoolKode\Async\Database\Statement;
 use KoolKode\Async\Coroutine;
 use KoolKode\Async\Failure;
 use KoolKode\Async\Success;
@@ -24,7 +26,7 @@ use Psr\Log\LoggerInterface;
  * 
  * @author Martin Schröder
  */
-class Connection
+class MySqlConnection implements Connection
 {
     /**
      * Client object being used to communicate with the DB server.
@@ -205,7 +207,7 @@ class Connection
             return new Failure(new \RuntimeException('Cannot prepare a statement using a disposed connection'));
         }
         
-        return new Statement($sql, $this->client, $this->logger);
+        return new MySqlStatement($sql, $this->client, $this->logger);
     }
 
     public function beginTransaction(bool $readOnly = false): Awaitable

@@ -154,7 +154,7 @@ class ConnectionFactory implements LoggerAwareInterface
             throw $e;
         }
         
-        return $wrap ? new Connection($client, $this->logger) : $client;
+        return $wrap ? new MySqlConnection($client, $this->logger) : $client;
     }
 
     protected function switchToUnicode(Client $client): Awaitable

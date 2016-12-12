@@ -15,6 +15,7 @@ namespace KoolKode\Async\MySQL;
 
 use KoolKode\Async\Awaitable;
 use KoolKode\Async\Coroutine;
+use KoolKode\Async\Database\ResultSet;
 use KoolKode\Async\Success;
 use KoolKode\Async\Transform;
 use KoolKode\Async\Util\Channel;
@@ -24,7 +25,7 @@ use KoolKode\Async\Util\Channel;
  * 
  * @author Martin Schröder
  */
-class ResultSet
+class MySqlResultSet implements ResultSet
 {
     /**
      * Number of rows affected by the query.
@@ -49,7 +50,7 @@ class ResultSet
      */
     protected $channel;
 
-    public function __construct($affectedRows, $lastInsertId, Channel $channel = null)
+    public function __construct(int $affectedRows, int $lastInsertId, Channel $channel = null)
     {
         $this->affectedRows = $affectedRows;
         $this->lastInsertId = $lastInsertId;
@@ -69,7 +70,7 @@ class ResultSet
      * 
      * @return int
      */
-    public function affectedRows()
+    public function affectedRows(): int
     {
         return $this->affectedRows;
     }
@@ -79,7 +80,7 @@ class ResultSet
      * 
      * @return int
      */
-    public function lastInsertId()
+    public function lastInsertId(): int
     {
         return $this->lastInsertId;
     }

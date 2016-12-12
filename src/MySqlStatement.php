@@ -13,20 +13,21 @@ declare(strict_types = 1);
 
 namespace KoolKode\Async\MySQL;
 
-use Psr\Log\LoggerInterface;
 use KoolKode\Async\Awaitable;
+use KoolKode\Async\Database\Statement;
 use KoolKode\Async\Deferred;
 use KoolKode\Async\Failure;
 use KoolKode\Async\Success;
 use KoolKode\Async\Util\Channel;
 use KoolKode\Async\Util\Executor;
+use Psr\Log\LoggerInterface;
 
 /**
  * Prepared statement that encapsulates an SQL query.
  * 
  * @author Martin Schröder
  */
-class Statement
+class MySqlStatement implements Statement
 {
     /**
      * Original SQL query string.
@@ -389,7 +390,7 @@ class Statement
                     $packet->discardByte();
                     $state = $client->parseOk($packet);
                     
-                    return $defer->resolve(new ResultSet($state['affected'], $state['lastId']));
+                    return $defer->resolve(new MySqlResultSet($state['affected'], $state['lastId']));
                 }
                 
                 break;
@@ -414,7 +415,7 @@ class Statement
             yield from $client->readPacket(0xFE);
         }
         
-        $this->result = new ResultSet(0, 0, $channel = new Channel($prefetch));
+        $this->result = new MySqlResultSet(0, 0, $channel = new Channel($prefetch));
         
         try {
             $defer->resolve($this->result);

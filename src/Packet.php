@@ -128,7 +128,7 @@ class Packet
         }
     }
 
-    public function readInt64()
+    public function readInt64(): int
     {
         try {
             if (\PHP_INT_MAX >> 31) {
@@ -160,7 +160,7 @@ class Packet
         }
     }
 
-    public function readUnsigned64()
+    public function readUnsigned64(): int
     {
         try {
             if (\PHP_INT_MAX >> 31) {
@@ -177,7 +177,7 @@ class Packet
         }
     }
 
-    public function readLengthEncodedInt()
+    public function readLengthEncodedInt(): int
     {
         $int = \ord(\substr($this->data, $this->offset++, 1));
         
