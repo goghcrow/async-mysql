@@ -290,17 +290,7 @@ class Statement
         
         return $defer;
     }
-
-    protected function throwError(Packet $packet)
-    {
-        $code = $packet->readInt16();
-        $marker = $packet->readFixedLengthString(1);
-        $state = $packet->readFixedLengthString(5);
-        $message = $packet->readEofString();
-        
-        throw new \RuntimeException(\sprintf('Failed to prepare SQL query: SQLSTATE [%s]: "%s"', $state, $message), $code);
-    }
-
+    
     protected function prepareQuery(Client $client): \Generator
     {
         $sql = $this->sql;
@@ -318,12 +308,7 @@ class Statement
         $builder->write($sql);
         
         yield from $client->sendPacket($builder->build());
-        
-        $packet = yield from $client->readPacket(0x00, 0xFF);
-        
-        if ($packet->type === 0xFF) {
-            return $this->throwError($packet);
-        }
+        $packet = yield from $client->readPacket(0x00);
         
         $this->id = $packet->readInt32();
         $columnCount = $packet->readInt16();
@@ -395,7 +380,6 @@ class Statement
         }
         
         yield from $client->sendPacket($builder->build());
-        
         $packet = yield from $client->readRawPacket();
         
         switch (\ord($packet->getData()[0])) {
@@ -412,7 +396,9 @@ class Statement
                 
                 break;
             case 0xFF:
-                return $this->throwError($packet);
+                $packet->discardByte();
+                
+                throw $client->populateError($packet);
         }
         
         $columnCount = $packet->readLengthEncodedInt();

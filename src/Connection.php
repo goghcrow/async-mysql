@@ -207,4 +207,64 @@ class Connection
         
         return new Statement($sql, $this->client, $this->logger);
     }
+
+    public function beginTransaction(bool $readOnly = false): Awaitable
+    {
+        return $this->client->sendCommand(function (Client $client) use ($readOnly) {
+            $sql = 'START TRANSACTION';
+            
+            if ($readOnly) {
+                $sql .= ' READ ONLY';
+            }
+            
+            $packet = new PacketBuilder();
+            $packet->writeInt8(0x03);
+            $packet->write($sql);
+            
+            try {
+                yield from $client->sendPacket($packet->build());
+                yield from $client->readPacket(0x00, 0xFE);
+            } catch (\Throwable $e) {
+                $this->shutdown($e);
+                
+                throw $e;
+            }
+        });
+    }
+
+    public function commit(): Awaitable
+    {
+        return $this->client->sendCommand(function (Client $client) {
+            $packet = new PacketBuilder();
+            $packet->writeInt8(0x03);
+            $packet->write('COMMIT');
+            
+            try {
+                yield from $client->sendPacket($packet->build());
+                yield from $client->readPacket(0x00, 0xFE);
+            } catch (\Throwable $e) {
+                $this->shutdown($e);
+                
+                throw $e;
+            }
+        });
+    }
+
+    public function rollBack(): Awaitable
+    {
+        return $this->client->sendCommand(function (Client $client) {
+            $packet = new PacketBuilder();
+            $packet->writeInt8(0x03);
+            $packet->write('ROLLBACK');
+            
+            try {
+                yield from $client->sendPacket($packet->build());
+                yield from $client->readPacket(0x00, 0xFE);
+            } catch (\Throwable $e) {
+                $this->shutdown($e);
+                
+                throw $e;
+            }
+        });
+    }
 }

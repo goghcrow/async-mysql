@@ -153,7 +153,6 @@ class Client
             $packet = $this->createAuthPacket($username, $password, $auth, $authPlugin);
             
             yield from $this->sendPacket($packet);
-            
             $packet = yield from $this->readRawPacket();
             
             if ($packet->readInt8() !== 0x00) {
@@ -280,6 +279,10 @@ class Client
         $payload = $len ? yield $this->socket->readBuffer($len, true) : '';
         $packet = new Packet(\substr($payload, 1), \ord($payload[0]));
         
+        if ($packet->type === 0xFF) {
+            throw $this->populateError($packet);
+        }
+        
         if ($expected && !\in_array($packet->type, $expected, true)) {
             $expected = \implode(', ', \array_map(function (int $type) {
                 return \sprintf('0x%02X', $type);
@@ -289,6 +292,16 @@ class Client
         }
         
         return $packet;
+    }
+    
+    public function populateError(Packet $packet): \Throwable
+    {
+        $code = $packet->readInt16();
+        $marker = $packet->readFixedLengthString(1);
+        $state = $packet->readFixedLengthString(5);
+        $message = $packet->readEofString();
+        
+        return new \RuntimeException(\sprintf('SQLSTATE [%s]: "%s"', $state, $message), $code);
     }
 
     public function sendCommand(callable $callback): Awaitable

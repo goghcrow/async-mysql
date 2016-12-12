@@ -36,16 +36,9 @@ class SetupTest extends AsyncTestCase
         
         $pdo->exec("INSERT INTO customer (name) VALUES ('KoolKode'), ('Async'), ('MySQL'), ('Git')");
         
-        $factory = new ConnectionFactory($dsn, $username, $password);
-        
-        $pool = new ConnectionPool($factory);
-        
-//         $conn = yield $factory->connect();
-//         $this->assertInstanceOf(Connection::class, $conn);
+        $pool = new ConnectionPool(new ConnectionFactory($dsn, $username, $password));
         
         try {
-//             $this->assertGreaterThan(0, yield $conn->ping());
-            
             $stmt = $pool->prepare("SELECT * FROM customer WHERE id > ? ORDER BY id");
             $this->assertInstanceOf(Statement::class, $stmt);
             
@@ -71,11 +64,18 @@ class SetupTest extends AsyncTestCase
             }
             
             $conn = yield $pool->checkout();
+            yield $conn->beginTransaction();
             
             try {
                 $this->assertEquals(5, yield $conn->insert('customer', [
                     'name' => 'Hub'
                 ]));
+                
+                $conn->commit();
+            } catch (\Throwable $e) {
+                $conn->rollBack();
+                
+                throw $e;
             } finally {
                 $conn->shutdown();
             }
