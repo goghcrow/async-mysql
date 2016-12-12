@@ -126,7 +126,7 @@ class MySqlStatement implements Statement
     }
 
     /**
-     * Dispose of the prepared statement.
+     * {@inheritdoc}
      */
     public function dispose(): Promise
     {
@@ -158,12 +158,7 @@ class MySqlStatement implements Statement
     }
 
     /**
-     * Apply a limit to the number of rows returned by the query.
-     * 
-     * @param int $limit
-     * @return Statement
-     * 
-     * @throws \InvalidArgumentException When a limit value less than 1 is given.
+     * {@inheritdoc}
      */
     public function limit(int $limit): Statement
     {
@@ -180,12 +175,7 @@ class MySqlStatement implements Statement
     }
 
     /**
-     * Skip the given number of result rows.
-     * 
-     * @param int $offset
-     * @return Statement
-     * 
-     * @throws \InvalidArgumentException When a negative offset is given.
+     * {@inheritdoc}
      */
     public function offset(int $offset): Statement
     {
@@ -202,13 +192,7 @@ class MySqlStatement implements Statement
     }
     
     /**
-     * Bind a value to a param placeholder.
-     * 
-     * @param int $pos 0-indexed parameter position.
-     * @param mixed $value
-     * @return Statement
-     * 
-     * @throws \InvalidArgumentException When the param index is negative.
+     * {@inheritdoc}
      */
     public function bind(int $pos, $value): Statement
     {
@@ -220,14 +204,9 @@ class MySqlStatement implements Statement
         
         return $this;
     }
-    
+
     /**
-     * Bin all given params at once.
-     * 
-     * @param array $params
-     * @return Statement
-     * 
-     * @throws \InvalidArgumentException When a param index is negative.
+     * {@inheritdoc}
      */
     public function bindAll(array $params): Statement
     {
@@ -239,9 +218,7 @@ class MySqlStatement implements Statement
     }
 
     /**
-     * Execute the prepared statement.
-     * 
-     * @return ResultSet
+     * {@inheritdoc}
      */
     public function execute(): Promise
     {

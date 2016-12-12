@@ -96,6 +96,9 @@ class MySqlConnectionPool implements ConnectionPool, LoggerAwareInterface
         ];
     }
 
+    /**
+     * {@inheritdoc}
+     */
     public function shutdown(\Throwable $e = null): Promise
     {
         if ($this->disposed) {
@@ -120,6 +123,9 @@ class MySqlConnectionPool implements ConnectionPool, LoggerAwareInterface
         });
     }
 
+    /**
+     * {@inheritdoc}
+     */
     public function initialize(int $size): Promise
     {
         $defer = new Deferred();
@@ -160,6 +166,9 @@ class MySqlConnectionPool implements ConnectionPool, LoggerAwareInterface
         return $defer;
     }
 
+    /**
+     * {@inheritdoc}
+     */
     public function checkout(): Promise
     {
         if ($this->disposed) {
@@ -196,10 +205,7 @@ class MySqlConnectionPool implements ConnectionPool, LoggerAwareInterface
     }
 
     /**
-     * Create a prepared statement from the given SQL.
-     * 
-     * @param string $sql
-     * @return PooledStatement
+     * {@inheritdoc}
      */
     public function prepare(string $sql): Statement
     {

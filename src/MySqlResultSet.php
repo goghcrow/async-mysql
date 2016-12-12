@@ -66,9 +66,7 @@ class MySqlResultSet implements ResultSet
     }
 
     /**
-     * Get the number of rows affected by the query (will allways be 0 for SELECT queries).
-     * 
-     * @return int
+     * {@inheritdoc}
      */
     public function affectedRows(): int
     {
@@ -76,9 +74,7 @@ class MySqlResultSet implements ResultSet
     }
 
     /**
-     * Get the last inserted ID.
-     * 
-     * @return int
+     * {@inheritdoc}
      */
     public function lastInsertId(): int
     {
@@ -86,9 +82,7 @@ class MySqlResultSet implements ResultSet
     }
     
     /**
-     * Close the cursor of this result.
-     * 
-     * Allways call this method to free the DB connection if you do not fetch all rows from the result.
+     * {@inheritdoc}
      */
     public function closeCursor(): Promise
     {
@@ -111,9 +105,7 @@ class MySqlResultSet implements ResultSet
     }
 
     /**
-     * Fetch the next row from the DB.
-     * 
-     * @return array or NULL when no more rows are available.
+     * {@inheritdoc}
      */
     public function fetch(): Promise
     {
@@ -125,9 +117,7 @@ class MySqlResultSet implements ResultSet
     }
 
     /**
-     * Fetch all rows from the DB into an array.
-     * 
-     * @return array
+     * {@inheritdoc}
      */
     public function fetchArray(): Promise
     {
@@ -151,10 +141,7 @@ class MySqlResultSet implements ResultSet
     }
     
     /**
-     * Fetch the next value of the given column.
-     * 
-     * @param string $alias
-     * @return mixed
+     * {@inheritdoc}
      */
     public function fetchColumn(string $alias): Promise
     {
@@ -168,10 +155,7 @@ class MySqlResultSet implements ResultSet
     }
 
     /**
-     * Fetch all values for the given column into an array.
-     * 
-     * @param string $alias
-     * @return array
+     * {@inheritdoc}
      */
     public function fetchColumnArray(string $alias): Promise
     {

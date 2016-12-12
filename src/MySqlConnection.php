@@ -56,9 +56,7 @@ class MySqlConnection implements Connection
     }
     
     /**
-     * Shut the DB connection down.
-     * 
-     * @param \Throwable $e Optional cause of shutdown.
+     * {@inheritdoc}
      */
     public function shutdown(\Throwable $e = null): Promise
     {
@@ -71,11 +69,17 @@ class MySqlConnection implements Connection
         return new Success(null);
     }
     
+    /**
+     * {@inheritdoc}
+     */
     public function quoteIdentifier(string $identifier): string
     {
         return '`' . \str_replace('`', '``', $identifier) . '`';
     }
     
+    /**
+     * {@inheritdoc}
+     */
     public function insert(string $table, array $values): Promise
     {
         return new Coroutine(function () use ($table, $values) {
@@ -103,6 +107,9 @@ class MySqlConnection implements Connection
         });
     }
     
+    /**
+     * {@inheritdoc}
+     */
     public function update(string $table, array $identity, array $values): Promise
     {
         return new Coroutine(function () use ($table, $identity, $values) {
@@ -140,6 +147,9 @@ class MySqlConnection implements Connection
         });
     }
     
+    /**
+     * {@inheritdoc}
+     */
     public function delete(string $table, array $identity): Promise
     {
         return new Coroutine(function () use ($table, $identity) {
@@ -196,10 +206,7 @@ class MySqlConnection implements Connection
     }
     
     /**
-     * Create a prepared statement from the given SQL.
-     * 
-     * @param string $sql
-     * @return Statement
+     * {@inheritdoc}
      */
     public function prepare(string $sql): Statement
     {
@@ -210,16 +217,25 @@ class MySqlConnection implements Connection
         return new MySqlStatement($sql, $this->client, $this->logger);
     }
 
+    /**
+     * {@inheritdoc}
+     */
     public function beginTransaction(bool $readOnly = false): Promise
     {
         return $this->client->beginTransaction($readOnly);
     }
 
+    /**
+     * {@inheritdoc}
+     */
     public function commit(): Promise
     {
         return $this->client->commit();
     }
 
+    /**
+     * {@inheritdoc}
+     */
     public function rollBack(): Promise
     {
         return $this->client->rollBack();
