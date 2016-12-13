@@ -159,7 +159,7 @@ class MySqlConnectionPool implements ConnectionPool, LoggerAwareInterface
             if (empty($result[1])) {
                 $defer->resolve(null);
             } else {
-                $defer->fail(new MultiReasonException($result[1], 'Failed to MySQL pool'));
+                $defer->fail(new MultiReasonException($result[1], 'Failed to initialize MySQL pool'));
             }
         });
         
