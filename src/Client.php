@@ -139,13 +139,13 @@ class Client
     public function shutdown(\Throwable $e = null): Awaitable
     {
         if ($this->disposed) {
-            return new Success(null);
+            return new Success();
         }
         
         $this->disposed = true;
         
         if ($e) {
-            $this->executor->cancel($e);
+            $this->executor->cancel('MySQL client shut down', $e);
             
             return $this->socket->close();
         }

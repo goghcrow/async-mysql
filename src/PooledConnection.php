@@ -13,7 +13,7 @@ declare(strict_types = 1);
 
 namespace KoolKode\Async\MySQL;
 
-use Interop\Async\Promise;
+use AsyncInterop\Promise;
 use KoolKode\Async\Success;
 use Psr\Log\LoggerInterface;
 

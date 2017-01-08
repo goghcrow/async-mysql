@@ -14,11 +14,11 @@
 			"email" : "m.schroeder2007@gmail.com"
 		}
 	],
-	"minimum-stability" : "dev",
+	"minimum-stability" : "stable",
 	"prefer-stable" : true,
 	"require" : {
 		"php" : "~7.0",
-		"koolkode/async" : "^0.2.10",
+		"koolkode/async" : "^0.2.11",
 		"koolkode/async-database" : "dev-master"
 	},
 	"require-dev" : {

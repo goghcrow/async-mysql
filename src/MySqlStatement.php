@@ -13,7 +13,7 @@ declare(strict_types = 1);
 
 namespace KoolKode\Async\MySQL;
 
-use Interop\Async\Promise;
+use AsyncInterop\Promise;
 use KoolKode\Async\Database\Statement;
 use KoolKode\Async\Deferred;
 use KoolKode\Async\Failure;
@@ -232,8 +232,8 @@ class MySqlStatement implements Statement
         
         $job = null;
         
-        $defer = new Deferred(function ($defer, \Throwable $e) use (& $job) {
-            $job->cancel($e);
+        $defer = new Deferred(function ($defer, string $reason, \Throwable $e = null) use (& $job) {
+            $job->cancel('MySQL query execution cancelled', $e);
         });
         
         $job = $this->executor->execute(function () use ($defer) {
@@ -262,7 +262,7 @@ class MySqlStatement implements Statement
                 $this->disposed = true;
                 $this->client->shutdown($e);
                 
-                $defer->cancel($e);
+                $defer->fail($e);
             }
         });
         
