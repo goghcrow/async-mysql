@@ -21,6 +21,7 @@ use KoolKode\Async\Database\ConnectionPool;
 use KoolKode\Async\Database\Statement;
 use KoolKode\Async\Deferred;
 use KoolKode\Async\Failure;
+use KoolKode\Async\Log\LoggerProxy;
 use KoolKode\Async\MultiReasonException;
 use KoolKode\Async\Success;
 use KoolKode\Async\Transform;
@@ -84,6 +85,7 @@ class MySqlConnectionPool implements ConnectionPool, LoggerAwareInterface
         $this->size = $size;
         
         $this->clients = new Channel($this->size);
+        $this->logger = new LoggerProxy(static::class);
     }
 
     public function __debugInfo(): array
@@ -142,11 +144,9 @@ class MySqlConnectionPool implements ConnectionPool, LoggerAwareInterface
                 } else {
                     $this->active--;
                     
-                    if ($this->logger) {
-                        $this->logger->error('Failed to create pooled MySQL connection', [
-                            'exception' => $e
-                        ]);
-                    }
+                    $this->logger->error('Failed to create pooled MySQL connection', [
+                        'exception' => $e
+                    ]);
                     
                     $client->shutdown($e);
                 }
@@ -201,7 +201,7 @@ class MySqlConnectionPool implements ConnectionPool, LoggerAwareInterface
             } else {
                 $this->clients->send($client);
             }
-        }, $this->logger);
+        });
     }
 
     /**
@@ -236,7 +236,7 @@ class MySqlConnectionPool implements ConnectionPool, LoggerAwareInterface
             } else {
                 $this->clients->send($client);
             }
-        }, $this->logger);
+        });
     }
 
     protected function handleUnterminatedTransaction(Client $client)

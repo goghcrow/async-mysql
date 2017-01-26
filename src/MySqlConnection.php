@@ -18,16 +18,20 @@ use KoolKode\Async\Database\Connection;
 use KoolKode\Async\Database\Statement;
 use KoolKode\Async\Coroutine;
 use KoolKode\Async\Failure;
+use KoolKode\Async\Log\LoggerProxy;
 use KoolKode\Async\Success;
-use Psr\Log\LoggerInterface;
+use Psr\Log\LoggerAwareInterface;
+use Psr\Log\LoggerAwareTrait;
 
 /**
  * MySQL DB connection that can be used to execute SQL queries.
  * 
  * @author Martin Schröder
  */
-class MySqlConnection implements Connection
+class MySqlConnection implements Connection, LoggerAwareInterface
 {
+    use LoggerAwareTrait;
+    
     /**
      * Client object being used to communicate with the DB server.
      * 
@@ -38,21 +42,14 @@ class MySqlConnection implements Connection
     protected $disposed = false;
     
     /**
-     * PSR logger instance.
-     * 
-     * @var LoggerInterface
-     */
-    protected $logger;
-    
-    /**
      * Create a new MySQL connection using the given DB client.
      * 
      * @param Client $client
      */
-    public function __construct(Client $client, LoggerInterface $logger = null)
+    public function __construct(Client $client)
     {
         $this->client = $client;
-        $this->logger = $logger;
+        $this->logger = new LoggerProxy(static::class);
     }
     
     /**
@@ -214,7 +211,7 @@ class MySqlConnection implements Connection
             return new Failure(new \RuntimeException('Cannot prepare a statement using a disposed connection'));
         }
         
-        return new MySqlStatement($sql, $this->client, $this->logger);
+        return new MySqlStatement($sql, $this->client);
     }
 
     /**

@@ -15,7 +15,6 @@ namespace KoolKode\Async\MySQL;
 
 use AsyncInterop\Promise;
 use KoolKode\Async\Success;
-use Psr\Log\LoggerInterface;
 
 /**
  * Connection backed by a pooled MySQL client.
@@ -26,9 +25,9 @@ class PooledConnection extends MySqlConnection
 {
     protected $disposer;
     
-    public function __construct(Client $client, callable $disposer, LoggerInterface $logger = null)
+    public function __construct(Client $client, callable $disposer)
     {
-        parent::__construct($client, $logger);
+        parent::__construct($client);
         
         $this->disposer = $disposer;
     }

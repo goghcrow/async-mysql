@@ -15,6 +15,7 @@ namespace KoolKode\Async\MySQL;
 
 use KoolKode\Async\Awaitable;
 use KoolKode\Async\Coroutine;
+use KoolKode\Async\Log\LoggerProxy;
 use KoolKode\Async\Socket\SocketFactory;
 use Psr\Log\LoggerAwareInterface;
 use Psr\Log\LoggerAwareTrait;
@@ -69,6 +70,7 @@ class ConnectionFactory implements LoggerAwareInterface
         $this->username = $username ?? '';
         $this->password = $password ?? '';
         
+        $this->logger = new LoggerProxy(static::class);
         $this->socketFactory = $this->createSocketFactory();
     }
 
@@ -140,7 +142,7 @@ class ConnectionFactory implements LoggerAwareInterface
         $socket = yield $this->socketFactory->createSocketStream();
         
         try {
-            $client = new Client($socket, $this->logger);
+            $client = new Client($socket);
             
             yield from $client->handshake($this->username, $this->password);
             yield $this->switchToUnicode($client);
@@ -154,7 +156,7 @@ class ConnectionFactory implements LoggerAwareInterface
             throw $e;
         }
         
-        return $wrap ? new MySqlConnection($client, $this->logger) : $client;
+        return $wrap ? new MySqlConnection($client) : $client;
     }
 
     protected function switchToUnicode(Client $client): Awaitable

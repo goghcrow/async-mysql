@@ -14,18 +14,22 @@ declare(strict_types = 1);
 namespace KoolKode\Async\MySQL;
 
 use KoolKode\Async\Awaitable;
+use KoolKode\Async\Concurrent\Executor;
+use KoolKode\Async\Log\LoggerProxy;
 use KoolKode\Async\Socket\SocketStream;
 use KoolKode\Async\Success;
-use KoolKode\Async\Util\Executor;
-use Psr\Log\LoggerInterface;
+use Psr\Log\LoggerAwareInterface;
+use Psr\Log\LoggerAwareTrait;
 
 /**
  * Client that synchronizes access to a MySQL DB.
  * 
  * @author Martin Schröder
  */
-class Client
+class Client implements LoggerAwareInterface
 {
+    use LoggerAwareTrait;
+    
     /**
      * Stream being used to communicate with the DB server.
      * 
@@ -97,23 +101,16 @@ class Client
     protected $executor;
 
     /**
-     * PSR logger instance.
-     * 
-     * @var LoggerInterface
-     */
-    protected $logger;
-
-    /**
      * Has a transaction been started?
      * 
      * @var bool
      */
     protected $transaction = false;
 
-    public function __construct(SocketStream $socket, LoggerInterface $logger = null)
+    public function __construct(SocketStream $socket)
     {
         $this->socket = $socket;
-        $this->logger = $logger;
+        $this->logger = new LoggerProxy(static::class);
         
         $this->executor = new Executor();
         
@@ -150,7 +147,7 @@ class Client
             return $this->socket->close();
         }
         
-        return $this->executor->execute(function () {
+        return $this->executor->submit(function () {
             return $this->socket->close();
         });
     }
@@ -361,7 +358,7 @@ class Client
     
     public function sendCommand(callable $callback): Awaitable
     {
-        return $this->executor->execute(function () use ($callback) {
+        return $this->executor->submit(function () use ($callback) {
             try {
                 $result = $callback($this);
                 

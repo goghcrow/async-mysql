@@ -14,21 +14,25 @@ declare(strict_types = 1);
 namespace KoolKode\Async\MySQL;
 
 use AsyncInterop\Promise;
+use KoolKode\Async\Concurrent\Executor;
 use KoolKode\Async\Database\Statement;
 use KoolKode\Async\Deferred;
 use KoolKode\Async\Failure;
+use KoolKode\Async\Log\LoggerProxy;
 use KoolKode\Async\Success;
 use KoolKode\Async\Util\Channel;
-use KoolKode\Async\Util\Executor;
-use Psr\Log\LoggerInterface;
+use Psr\Log\LoggerAwareInterface;
+use Psr\Log\LoggerAwareTrait;
 
 /**
  * Prepared statement that encapsulates an SQL query.
  * 
  * @author Martin Schröder
  */
-class MySqlStatement implements Statement
+class MySqlStatement implements Statement, LoggerAwareInterface
 {
+    use LoggerAwareTrait;
+    
     /**
      * Original SQL query string.
      * 
@@ -42,13 +46,6 @@ class MySqlStatement implements Statement
      * @var Client
      */
     protected $client;
-
-    /**
-     * Optional PSR logger instance.
-     * 
-     * @var LoggerInterface
-     */
-    protected $logger;
 
     /**
      * ID of the statement if it has been prepared.
@@ -113,11 +110,12 @@ class MySqlStatement implements Statement
      */
     protected $executor;
 
-    public function __construct(string $sql, Client $client, LoggerInterface $logger = null)
+    public function __construct(string $sql, Client $client)
     {
         $this->sql = $sql;
         $this->client = $client;
-        $this->logger = $logger;
+        
+        $this->logger = new LoggerProxy(static::class);
     }
 
     public function __destruct()
@@ -236,7 +234,7 @@ class MySqlStatement implements Statement
             $job->cancel('MySQL query execution cancelled', $e);
         });
         
-        $job = $this->executor->execute(function () use ($defer) {
+        $job = $this->executor->submit(function () use ($defer) {
             try {
                 if ($this->result) {
                     throw new \RuntimeException('Cannot execute a statement while fetching result rows');

@@ -27,12 +27,11 @@ class PooledStatement extends MySqlStatement
     
     protected $disposer;
     
-    public function __construct(string $sql, callable $connector, callable $disposer, LoggerInterface $logger = null)
+    public function __construct(string $sql, callable $connector, callable $disposer)
     {
         $this->sql = $sql;
         $this->connector = $connector;
         $this->disposer = $disposer;
-        $this->logger = $logger;
     }
     
     public function dispose(): Promise
