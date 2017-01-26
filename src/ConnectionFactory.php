@@ -15,7 +15,6 @@ namespace KoolKode\Async\MySQL;
 
 use KoolKode\Async\Awaitable;
 use KoolKode\Async\Coroutine;
-use KoolKode\Async\Log\LoggerProxy;
 use KoolKode\Async\Socket\SocketFactory;
 use Psr\Log\LoggerAwareInterface;
 use Psr\Log\LoggerAwareTrait;
@@ -70,7 +69,7 @@ class ConnectionFactory implements LoggerAwareInterface
         $this->username = $username ?? '';
         $this->password = $password ?? '';
         
-        $this->logger = new LoggerProxy(static::class);
+        $this->logger = new Logger(static::class);
         $this->socketFactory = $this->createSocketFactory();
     }
 
@@ -140,6 +139,10 @@ class ConnectionFactory implements LoggerAwareInterface
     protected function establishConnection(bool $wrap = true): \Generator
     {
         $socket = yield $this->socketFactory->createSocketStream();
+        
+        $this->logger->info('Connected to MySQL server {host}', [
+            'host' => $this->socketFactory->getPeer()
+        ]);
         
         try {
             $client = new Client($socket);

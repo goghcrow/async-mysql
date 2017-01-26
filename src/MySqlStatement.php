@@ -18,7 +18,6 @@ use KoolKode\Async\Concurrent\Executor;
 use KoolKode\Async\Database\Statement;
 use KoolKode\Async\Deferred;
 use KoolKode\Async\Failure;
-use KoolKode\Async\Log\LoggerProxy;
 use KoolKode\Async\Success;
 use KoolKode\Async\Util\Channel;
 use Psr\Log\LoggerAwareInterface;
@@ -115,7 +114,7 @@ class MySqlStatement implements Statement, LoggerAwareInterface
         $this->sql = $sql;
         $this->client = $client;
         
-        $this->logger = new LoggerProxy(static::class);
+        $this->logger = new Logger(static::class);
     }
 
     public function __destruct()
@@ -146,6 +145,10 @@ class MySqlStatement implements Statement, LoggerAwareInterface
                     $builder->writeInt32($id);
                     
                     yield from $client->sendPacket($builder->build());
+                    
+                    $this->logger->debug('Disposed prepared statement: {id}', [
+                        'id' => $id
+                    ]);
                 });
             } finally {
                 $this->id = null;
@@ -266,7 +269,7 @@ class MySqlStatement implements Statement, LoggerAwareInterface
         
         return $defer;
     }
-    
+
     protected function prepareQuery(Client $client): \Generator
     {
         $sql = $this->sql;
@@ -310,6 +313,11 @@ class MySqlStatement implements Statement, LoggerAwareInterface
         if ($columnCount && !$client->isEofDeprecated()) {
             yield from $client->readPacket(0xFE);
         }
+        
+        $this->logger->debug("Prepared statement {id} from SQL:\n{sql}", [
+            'id' => $this->id,
+            'sql' => \trim(\preg_replace("'\s+'", ' ', $sql))
+        ]);
     }
 
     protected function parseColumnDefinition(Packet $packet): array

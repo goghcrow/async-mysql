@@ -19,14 +19,18 @@ use KoolKode\Async\Database\ResultSet;
 use KoolKode\Async\Success;
 use KoolKode\Async\Transform;
 use KoolKode\Async\Util\Channel;
+use Psr\Log\LoggerAwareInterface;
+use Psr\Log\LoggerAwareTrait;
 
 /**
  * Provides access to the result of an SQL query.
  * 
  * @author Martin Schröder
  */
-class MySqlResultSet implements ResultSet
+class MySqlResultSet implements ResultSet, LoggerAwareInterface
 {
+    use LoggerAwareTrait;
+    
     /**
      * Number of rows affected by the query.
      * 
@@ -55,6 +59,8 @@ class MySqlResultSet implements ResultSet
         $this->affectedRows = $affectedRows;
         $this->lastInsertId = $lastInsertId;
         $this->channel = $channel;
+        
+        $this->logger = new Logger(static::class);
     }
 
     /**
@@ -94,6 +100,8 @@ class MySqlResultSet implements ResultSet
                     
                     return new Coroutine(function () use ($channel) {
                         while (null !== yield $channel->receive());
+                        
+                        $this->logger->debug('Closed cursor');
                     });
                 }
             } finally {

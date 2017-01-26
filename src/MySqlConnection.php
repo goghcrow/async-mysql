@@ -18,7 +18,6 @@ use KoolKode\Async\Database\Connection;
 use KoolKode\Async\Database\Statement;
 use KoolKode\Async\Coroutine;
 use KoolKode\Async\Failure;
-use KoolKode\Async\Log\LoggerProxy;
 use KoolKode\Async\Success;
 use Psr\Log\LoggerAwareInterface;
 use Psr\Log\LoggerAwareTrait;
@@ -49,7 +48,7 @@ class MySqlConnection implements Connection, LoggerAwareInterface
     public function __construct(Client $client)
     {
         $this->client = $client;
-        $this->logger = new LoggerProxy(static::class);
+        $this->logger = new Logger(static::class);
     }
     
     /**

@@ -32,6 +32,8 @@ class PooledStatement extends MySqlStatement
         $this->sql = $sql;
         $this->connector = $connector;
         $this->disposer = $disposer;
+        
+        $this->logger = new Logger(static::class);
     }
     
     public function dispose(): Promise

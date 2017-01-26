@@ -15,7 +15,6 @@ namespace KoolKode\Async\MySQL;
 
 use KoolKode\Async\Awaitable;
 use KoolKode\Async\Concurrent\Executor;
-use KoolKode\Async\Log\LoggerProxy;
 use KoolKode\Async\Socket\SocketStream;
 use KoolKode\Async\Success;
 use Psr\Log\LoggerAwareInterface;
@@ -110,7 +109,7 @@ class Client implements LoggerAwareInterface
     public function __construct(SocketStream $socket)
     {
         $this->socket = $socket;
-        $this->logger = new LoggerProxy(static::class);
+        $this->logger = new Logger(static::class);
         
         $this->executor = new Executor();
         
@@ -143,11 +142,11 @@ class Client implements LoggerAwareInterface
         
         if ($e) {
             $this->executor->cancel('MySQL client shut down', $e);
-            
-            return $this->socket->close();
         }
         
         return $this->executor->submit(function () {
+            $this->logger->info('Connection closed');
+            
             return $this->socket->close();
         });
     }
@@ -170,6 +169,10 @@ class Client implements LoggerAwareInterface
         } finally {
             $this->sequence = -1;
         }
+        
+        $this->logger->debug('Authenticated as user {user}', [
+            'user' => $username
+        ]);
     }
 
     protected function readAuthChallenge(): \Generator
@@ -411,6 +414,8 @@ class Client implements LoggerAwareInterface
             }
             
             $this->transaction = true;
+            
+            $this->logger->debug('Transaction started');
         });
     }
 
@@ -439,6 +444,8 @@ class Client implements LoggerAwareInterface
             }
             
             $this->transaction = false;
+            
+            $this->logger->debug('Transaction committed');
         });
     }
 
@@ -467,6 +474,8 @@ class Client implements LoggerAwareInterface
             }
             
             $this->transaction = false;
+            
+            $this->logger->debug('Transaction rolled back');
         });
     }
 }

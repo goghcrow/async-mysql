@@ -21,7 +21,6 @@ use KoolKode\Async\Database\ConnectionPool;
 use KoolKode\Async\Database\Statement;
 use KoolKode\Async\Deferred;
 use KoolKode\Async\Failure;
-use KoolKode\Async\Log\LoggerProxy;
 use KoolKode\Async\MultiReasonException;
 use KoolKode\Async\Success;
 use KoolKode\Async\Transform;
@@ -85,7 +84,7 @@ class MySqlConnectionPool implements ConnectionPool, LoggerAwareInterface
         $this->size = $size;
         
         $this->clients = new Channel($this->size);
-        $this->logger = new LoggerProxy(static::class);
+        $this->logger = new Logger(static::class);
     }
 
     public function __debugInfo(): array
@@ -161,6 +160,8 @@ class MySqlConnectionPool implements ConnectionPool, LoggerAwareInterface
             } else {
                 $defer->fail(new MultiReasonException($result[1], 'Failed to initialize MySQL pool'));
             }
+            
+            $this->logger->debug('Connection pool initialized');
         });
         
         return $defer;
