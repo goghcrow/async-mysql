@@ -223,6 +223,10 @@ class MySqlConnectionPool implements ConnectionPool, LoggerAwareInterface
             throw new \RuntimeException('Cannot prepare statement using a disposed connection pool');
         }
         
+        $sql = \preg_replace_callback("'`#__([^`]+)`'", function (array $m) {
+            return '`' . \str_replace('`', '``', $this->prefix . $m[1]) . '`';
+        }, $sql);
+        
         return new PooledStatement($sql, function () {
             if ($this->disposed) {
                 return new Failure(new \RuntimeException('Cannot execute statement due to disposed connection pool'));
