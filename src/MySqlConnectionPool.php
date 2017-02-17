@@ -57,6 +57,13 @@ class MySqlConnectionPool implements ConnectionPool, LoggerAwareInterface
      * @var bool
      */
     protected $disposed = false;
+    
+    /**
+     * Schema object prefix.
+     * 
+     * @var string
+     */
+    protected $prefix;
 
     /**
      * Holds all available MySQL connections.
@@ -78,10 +85,11 @@ class MySqlConnectionPool implements ConnectionPool, LoggerAwareInterface
      * @param ConnectionFactory $factory
      * @param int $size Maximum pool size.
      */
-    public function __construct(ConnectionFactory $factory, int $size = 10)
+    public function __construct(ConnectionFactory $factory, int $size = 10, string $prefix = '')
     {
         $this->factory = $factory;
         $this->size = $size;
+        $this->prefix = $prefix;
         
         $this->clients = new Channel($this->size);
         $this->logger = new Logger(static::class);
@@ -93,7 +101,8 @@ class MySqlConnectionPool implements ConnectionPool, LoggerAwareInterface
             'size' => $this->size,
             'active' => $this->active,
             'idle' => $this->clients->count(),
-            'disposed' => $this->disposed
+            'disposed' => $this->disposed,
+            'prefix' => $this->prefix
         ];
     }
 
@@ -202,7 +211,7 @@ class MySqlConnectionPool implements ConnectionPool, LoggerAwareInterface
             } else {
                 $this->clients->send($client);
             }
-        });
+        }, $this->prefix);
     }
 
     /**

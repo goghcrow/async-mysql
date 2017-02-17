@@ -25,9 +25,9 @@ class PooledConnection extends MySqlConnection
 {
     protected $disposer;
     
-    public function __construct(Client $client, callable $disposer)
+    public function __construct(Client $client, callable $disposer, string $prefix = '')
     {
-        parent::__construct($client);
+        parent::__construct($client, $prefix);
         
         $this->disposer = $disposer;
     }

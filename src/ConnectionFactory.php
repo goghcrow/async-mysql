@@ -78,9 +78,9 @@ class ConnectionFactory implements LoggerAwareInterface
      * 
      * @return MySqlConnection
      */
-    public function connect(): Awaitable
+    public function connect(string $prefix = ''): Awaitable
     {
-        return new Coroutine($this->establishConnection());
+        return new Coroutine($this->establishConnection($prefix));
     }
     
     /**
@@ -136,7 +136,7 @@ class ConnectionFactory implements LoggerAwareInterface
         throw new \InvalidArgumentException('Neighter MySQL host nor Unix domain socket specified in MySQL DSN');
     }
 
-    protected function establishConnection(bool $wrap = true): \Generator
+    protected function establishConnection(bool $wrap = true, string $prefix = ''): \Generator
     {
         $socket = yield $this->socketFactory->createSocketStream();
         
@@ -159,7 +159,7 @@ class ConnectionFactory implements LoggerAwareInterface
             throw $e;
         }
         
-        return $wrap ? new MySqlConnection($client) : $client;
+        return $wrap ? new MySqlConnection($client, $prefix) : $client;
     }
 
     protected function switchToUnicode(Client $client): Awaitable

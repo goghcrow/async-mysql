@@ -38,6 +38,8 @@ class MySqlConnection implements Connection, LoggerAwareInterface
      */
     protected $client;
     
+    protected $prefix;
+    
     protected $disposed = false;
     
     /**
@@ -45,9 +47,11 @@ class MySqlConnection implements Connection, LoggerAwareInterface
      * 
      * @param Client $client
      */
-    public function __construct(Client $client)
+    public function __construct(Client $client, string $prefix = '')
     {
         $this->client = $client;
+        $this->prefix = $prefix;
+        
         $this->logger = new Logger(static::class);
     }
     
@@ -65,6 +69,11 @@ class MySqlConnection implements Connection, LoggerAwareInterface
         return new Success(null);
     }
     
+    public function applySchemaObjectPrefix(string $name): string
+    {
+        return \str_replace('#__', $this->prefix, $name);
+    }
+    
     /**
      * {@inheritdoc}
      */
@@ -79,7 +88,7 @@ class MySqlConnection implements Connection, LoggerAwareInterface
     public function insert(string $table, array $values): Promise
     {
         return new Coroutine(function () use ($table, $values) {
-            $sql = 'INSERT INTO ' . $this->quoteIdentifier($table) . ' (';
+            $sql = 'INSERT INTO ' . $this->quoteIdentifier($this->applySchemaObjectPrefix($table)) . ' (';
             $params = [];
             
             foreach ($values as $k => $v) {
@@ -109,7 +118,7 @@ class MySqlConnection implements Connection, LoggerAwareInterface
     public function update(string $table, array $identity, array $values): Promise
     {
         return new Coroutine(function () use ($table, $identity, $values) {
-            $sql = 'UPDATE ' . $this->quoteIdentifier($table) . ' SET ';
+            $sql = 'UPDATE ' . $this->quoteIdentifier($this->applySchemaObjectPrefix($table)) . ' SET ';
             $params = [];
             
             foreach ($values as $k => $v) {
@@ -149,7 +158,7 @@ class MySqlConnection implements Connection, LoggerAwareInterface
     public function delete(string $table, array $identity): Promise
     {
         return new Coroutine(function () use ($table, $identity) {
-            $sql = 'DELETE FROM ' . $this->quoteIdentifier($table) . ' WHERE ';
+            $sql = 'DELETE FROM ' . $this->quoteIdentifier($this->applySchemaObjectPrefix($table)) . ' WHERE ';
             $params = [];
             
             foreach ($identity as $k => $v) {
@@ -200,7 +209,7 @@ class MySqlConnection implements Connection, LoggerAwareInterface
             return (int) \ceil((\microtime(true) * 1000 - $time) + .5);
         });
     }
-    
+
     /**
      * {@inheritdoc}
      */
@@ -210,7 +219,11 @@ class MySqlConnection implements Connection, LoggerAwareInterface
             return new Failure(new \RuntimeException('Cannot prepare a statement using a disposed connection'));
         }
         
-        return new MySqlStatement($sql, $this->client);
+        $sql = \preg_replace_callback("'`#__([^`]+)`'", function (array $m) {
+            return '`' . \str_replace('`', '``', $this->prefix . $m[1]) . '`';
+        }, $sql);
+        
+        return new MySqlStatement($sql, $this->client, $this->prefix);
     }
 
     /**
